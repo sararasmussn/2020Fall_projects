@@ -36,7 +36,8 @@ Data sources:
 
 https://data.cityofchicago.org/browse?q=library%20computer&sortBy=relevance 
 https://data.cityofchicago.org/Education/Connect-Chicago-Locations/bmus-hp7e/data
-https://data.seattle.gov/Community/Checkouts-By-Title-Physical-Items-/5src-czff/data
+https://data.seattle.gov/Community/Checkouts-By-Title-Physical-Items-/5src-czff/data  
+
 (1) Why simulate this, rather than conduct an analysis of historical trends? There is not enough open data available on this topic to do so. The data is patchy, and possibly not even collected, by some libraries. However, I hope the little data available can help enrich this simulation.
 
 

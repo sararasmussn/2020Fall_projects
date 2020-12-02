@@ -5,7 +5,6 @@ IS597PR
 Fall 2020
 """
 import random
-import queue    # https://docs.python.org/3/library/queue.html
 
 
 def determine_fleet_availability(total_inventory: int, weight=4) -> int:
@@ -44,31 +43,36 @@ def select_reservation_length() -> int:
     After each computer use, there will be a 15-minute delay (where the computer is unavailable to be used)
         so that staff can sanitize the area per the library’s COVID-19 cleaning procedures.
 
-    :return: The length of time + 15min delay, measured in hours (.50 or 1.25)
+    :return: The length of time
     """
     return 1
 
 
-def set_total_patrons_count():
+def set_total_patrons_count() -> int:
     """
-    RANDOMIZED variable, based on Chicago Public Library data (min=514, max=949)
     Set the number of patrons for 1 day.
-    :return:
+    :return: RANDOMIZED variable, based on Chicago Public Library data (min=514, max=949)
     """
     patron_count = random.randrange(514, 949)
     return patron_count
 
 
-def patrons_per_hour(total_patrons, hour):
+def patrons_per_hour(total_patrons: int, hour: int) -> int:
     """
     Depending on the hour, set the number of patrons entering the queue.
     Discrete probability distribution of patrons being added, based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
+
+    :param total_patrons: A randomized variable, see set_total_patrons_count()
+    :param hour: Int representing hour of day (0 = 10am...)
+    :return: The number of patrons who show up at that hour
+
     >>> patrons_per_hour(949, 10)
     33
     >>> patrons_per_hour(514, 15)
     114
     """
+
     if hour == 0:
         patrons = total_patrons * 0.035010
     elif hour == 1:
@@ -94,100 +98,72 @@ def patrons_per_hour(total_patrons, hour):
     return int(patrons)
 
 
-def run_one_day_v2(fleet):
-    """
-    The patron queue is empty to start.
-    Add patrons to the queue of people wanting to use a computer - attribute of time added.
-    If there is a computer available, assign the person to an open computer.
-
-    Patron's reservation length is an attribute of the patron.
-    - Keep track of WHEN they got in the queue
-    - If a patron has to wait more than 30 minutes, they will leave queue. Make note of it.
-    :return:
-    """
-    waitcount = 0
-    total_patrons_today = set_total_patrons_count()
-    computers_available = determine_fleet_availability(fleet)
-    test_q = queue.Queue(maxsize=computers_available)
-    for hour in range(10):
-        p = patrons_per_hour(total_patrons_today, hour)
-        for patron in range(p):
-            test_q.put(hour)
-            if test_q.qsize() >= computers_available:
-                waitcount += 1
-        for patron in range(p):
-            test_q.get()
-    print("total who waited:", waitcount)
-
-
-def run_one_day(fleet):
+def run_one_day(fleet) -> dict:
     """
     Simulate one day at the library.
 
-    Questions to answer, within 1 day:
+    :return: Returns answers to the following questions, as a dict:
     - How many computers were in service today?
-    - How many computers were utilized today, out of those in service? (# used / # available, not # in fleet)
-    - How long did patrons wait to use a computer? (Keep track of time elapsed in queue, save all of this - not just the average)
-    - How many patrons left the queue because of the wait?
-
-    :return:
-    # """
-    # Determine how many computers are in service today.
+    - What was the min and max utilization per hour? (# used / # available, not # in fleet)
+    - How many patrons waited to use a computer?
+    - How many patrons left the queue because the wait was over 1 hour?
+    >>> run_one_day(120)
+    {'Computers available': 47, 'Utilization': (0.46808510638297873, 1.0), 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    >>> run_one_day(50)
+    {'Computers available': 47, 'Utilization': (0.46808510638297873, 1.0), 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    """
     computers_available = determine_fleet_availability(fleet)
-
-    # Super basic test
-    daily_results = {"Computers Available" : computers_available, "Utilization": [], "Users Waiting":[]}
-    total_demand_by_hour = []
+    daily_results = {"Computers available" : computers_available}
     wait_count_by_hour = []
+    utilization_by_hour = []
+    departed_queue = []
     hours_open = 10
     waiting = 0
-
-    for minute in range(hours_open * 60):
-        users = random.randrange(0,300) + waiting
+    total_patrons_today = set_total_patrons_count()
+    for hour in range(hours_open):
+        new_patrons = patrons_per_hour(total_patrons_today, hour)
+        users = new_patrons + waiting
+        # If waited more than 1 hour, leave the line
+        if waiting > computers_available:
+            leavers = waiting - computers_available
+            departed_queue.append(leavers)
+            users = users - leavers
         if users > computers_available:
             waiting = users - computers_available
             utilization = computers_available/computers_available
         else:
             waiting = 0
             utilization = users/computers_available
-        total_demand_by_hour.append(users)
         wait_count_by_hour.append(waiting)
-        daily_results['Utilization'].append(utilization)
-        daily_results['Users Waiting'].append(waiting)
+        utilization_by_hour.append(utilization)
+    daily_results['Utilization'] = (min(utilization_by_hour), max(utilization_by_hour))
+    daily_results['Wait count per hour'] = wait_count_by_hour
+    daily_results['Departed wait queue'] = sum(departed_queue)
     return daily_results
 
 
 def run_simulation(inventory_qtys: list, number_of_days: int= 1):
     """
-    Run as many days of simulation as specified. Collect all the stats. Return a summary to console.
-    This function does not return anything.
+    Run as many days of simulation run_one_day() as specified. Collect all the stats. Print a summary to console.
 
-    Summary questions to answer:
+    :param number_of_days: Number of times the simulation should be run. 1 year=365; 4 years=1,460
+    :param inventory_qtys: Devices qtys to simulate.
+    :return: Answers to these questions:
     - What was the total cost of the service provided?
         (# devices * price of device) + (max(# devices unavailable) * repair fee)
-    - What was the average utilization rate (# used / # available) for all simulations run?
-    - What was the average wait time for all sims run?
+    - What was the min/median/max utilization rate for all simulations run?
     - What was the average # of drop-offs (people who left because they waited longer than 30 minutes) for all sims run?
-
     From this, the user can discern: How many computers should we buy?
-
-    :param number_of_days: 1 year=365; 4 years=1,460
-    :param inventory_qtys: A list of devices to
-    :return:
     """
     print("Running simulation of", number_of_days, "days...\n")
 
-    # Your average Chromebook price
-    device_cost = 375
-
+    # Run the simulation once for each device count
     avg_cost = []
     avg_util = []
     users_waiting = []
-
-    # Run the simulation once for each device count
     for number_of_devices in inventory_qtys:
         # Acquisition is a fixed cost based on the number of devices in inventory
-        acquisition_cost = (number_of_devices * device_cost)
+        acquisition_cost = (number_of_devices * 375)    # Your average Chromebook price
 
         # Run the simulation the specified # times
         for days in range(number_of_days):
@@ -196,7 +172,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
 
             # Determine the total repair cost for n simulations run
             # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
-            repair_cost = ((number_of_devices - single_simulation['Computers Available']) * 95)
+            repair_cost = ((number_of_devices - single_simulation['Computers available']) * 95)
             total_cost = acquisition_cost + repair_cost
             avg_cost.append(total_cost)
 
@@ -205,12 +181,12 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
             avg_util.append(utilization)
 
             # Determine avg wait time over n simulations run
-            users_waiting.append(sum(single_simulation['Users Waiting']))
+            # users_waiting.append(sum(single_simulation['Users Waiting']))
 
         total_waiting = sum(users_waiting)
         final_cost = sum(avg_cost)/len(avg_cost)
         final_util = sum(avg_util)/len(avg_util)
-        print("# Devices: {}\nAvg cost: ${:,.2f}\tAvg util: {:2.2%}\t Total users who waited: {:,}\n".format(number_of_devices, final_cost, final_util, total_waiting))
+        print("# Devices: {}\nAvg cost: ${:,.2f}\t\tAvg utilization: {:2.2%}\t\t Total users who waited: {:,}\n".format(number_of_devices, final_cost, final_util, total_waiting))
 
         # Clear these variables at the end of each loop
         avg_util = []

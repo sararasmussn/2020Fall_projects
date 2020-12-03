@@ -5,9 +5,29 @@ IS597PR
 Fall 2020
 """
 import random
+import numpy as np
+import matplotlib.pyplot as plt
 
 
-def determine_fleet_availability(total_inventory: int, weight=4) -> int:
+def calculate_pert(low, likely, high, weight=4) -> float:
+    """
+    Simple PERT estimate = (a + 4b + c)/6 used in determining multiple variables
+
+    :param low: Lowest number a in distribution
+    :param likely: Middle number b in distribution
+    :param high: Highest number c in distribution
+    :param weight: How many times more likely is the middle number?
+    :return: Float pert value
+    >>> calculate_pert(90, 500, 900, 4)
+    498.3333333333333
+    >>> calculate_pert(80, 400, 900, 4)
+    430.0
+    """
+    pert = (low + (weight * likely) + high)/(weight+2)
+    return pert
+
+
+def determine_fleet_availability(total_inventory: int) -> int:
     """
     RANDOMIZED VARIABLE: Given the number of computers in your fleet, calculate out-of-service count, return the number of computers in service today.
     ---
@@ -24,10 +44,9 @@ def determine_fleet_availability(total_inventory: int, weight=4) -> int:
     145
     """
     best_case = 0.00
-    likely_case = .04
-    worst_case = random.uniform(.19, .33)
-    # Simple PERT estimate = (a + 4b + c)/6
-    pct_out = (best_case + (weight * likely_case) + worst_case)/(weight+2)
+    likely_case = 0.04
+    worst_case = random.uniform(0.19, 0.31)
+    pct_out = calculate_pert(best_case, likely_case, worst_case)
     out_of_service = (total_inventory * pct_out)
     todays_inventory = total_inventory - int(out_of_service)
     return todays_inventory
@@ -48,13 +67,38 @@ def select_reservation_length() -> int:
     return 1
 
 
-def set_total_patrons_count() -> int:
+def set_total_patrons_count(samples: int = 1) -> int:
     """
     Set the number of patrons for 1 day.
-    :return: RANDOMIZED variable, based on Chicago Public Library data (min=514, max=949)
+
+    :samples: Number of times to run the simulation, used for testing the distribution.
+    :return: RANDOMIZED variable, using beta distribution, based on Chicago Public Library data
+    >>> results = []
+    >>> for test in range(5):
+    ...     results.append(set_total_patrons_count(samples=10000))  # Test the high end
+    >>> print(results)
+    >>> min(results) >= 444
+    True
+    >>> max(results) <= 949
+    True
     """
-    patron_count = random.randrange(514, 949)
-    return patron_count
+    # We cannot assume that because people have used public computers in the past, they will continue to.
+    # In fact, CPL data shows that usage decreased for the last 3 years, specifically by 13.5% from 2018 to 2019.
+    low_service = (514 * .865)      # I've intentionally lowered the low end by 13.5%.
+    # But it's also likely that due to the economic crisis, usage will go up (Jaeger et al., 2011).
+    peak_service = random.uniform(622, 949)     # 949 was the highest number in 2016
+    # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_07/Probability_Distributions.ipynb & https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.beta.html
+    g = np.random.default_rng()
+    patron_pct = np.random.Generator.beta(g, low_service, peak_service, samples)
+    if samples > 1:
+        # Testing my distribution: Does it look like the CPL data?
+        patron_array = (low_service * patron_pct) + low_service
+        plt.hist(patron_array,
+                        bins=200,
+                        density=True)
+        plt.show()
+    patron_count = (low_service * patron_pct[0]) + low_service
+    return int(patron_count)
 
 
 def patrons_per_hour(total_patrons: int, hour: int) -> int:
@@ -195,11 +239,6 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
 
 
 def main():
-    """
-    Put all editable bits here.
-
-    :return: Results of program
-    """
     # TODO: Convert to user input
     # n = input("How many days should the simulation run? ")
     n = 1460

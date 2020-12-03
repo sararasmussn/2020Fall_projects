@@ -29,21 +29,7 @@ Hypothesis: The more computers you have in one location, the more people will us
 However, there will be a tipping point where computers would exceed demand, decreasing utilization rates.  
 I am interested in finding the “point of convergence” for the most cost-effective number of computers to maintain.  
 
-Data sources:
-- https://data.cityofchicago.org/browse?q=library%20computer&sortBy=relevance 
-- https://data.cityofchicago.org/Education/Connect-Chicago-Locations/bmus-hp7e/data
-- https://data.seattle.gov/Community/Checkouts-By-Title-Physical-Items-/5src-czff/data  
+Bibliography:
+Please see my bibliography.md for citations and project data sources.
 
 (1) Why simulate this, rather than conduct an analysis of historical trends? There is not enough open data available on this topic to do so. The data is patchy, and possibly not even collected, by some libraries. However, I hope the little data available can help enrich this simulation.
-
-
-
-<!-- 
-FIXED CONSTANTS
-- Location: Harold Washington Library Center in downtown Chicago
-- Open hours:
-Monday, Tuesday, Wednesday, Thursday: 9AM-9PM
-Friday, Saturday: 9AM-5PM
-Sunday: 1-5PM
-TODO: **Maybe start with 10AM-8PM for all days: 10 open hours, so that it lines up with valid SPL data**
--->

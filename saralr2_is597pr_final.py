@@ -7,6 +7,7 @@ Fall 2020
 import random
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def calculate_pert(low, likely, high, weight=4) -> float:
@@ -30,6 +31,7 @@ def calculate_pert(low, likely, high, weight=4) -> float:
 def determine_fleet_availability(total_inventory: int) -> int:
     """
     RANDOMIZED VARIABLE: Given the number of computers in your fleet, calculate out-of-service count, return the number of computers in service today.
+    Uses a PERT distribution.
     ---
     "Mean time between failures (MTBF) is the predicted elapsed time between inherent failures of a mechanical or electronic system, during normal system operation.
     MTBF can be calculated as the arithmetic mean (average) time between failures of a system." (Wikipedia)
@@ -55,6 +57,7 @@ def determine_fleet_availability(total_inventory: int) -> int:
 def select_reservation_length() -> int:
     """
     RANDOMIZED VARIABLE
+    Binomial distribution.
     For one computer reservation, randomly select the reservation length:
     Options for length of use selected by the patrons: 15 or 1 hour.
     Discrete distribution between two options. Not 50/50. Probably skewed more like 25/75.
@@ -69,13 +72,15 @@ def select_reservation_length() -> int:
 
 def set_total_patrons_count(samples: int = 1) -> int:
     """
-    Set the number of patrons for 1 day.
+    Set the total number of patrons for 1 day.
+    Uses a beta distribution.
+
 
     :samples: Number of times to run the simulation, used for testing the distribution.
-    :return: RANDOMIZED variable, using beta distribution, based on Chicago Public Library data
+    :return: RANDOMIZED variable, based on Chicago Public Library data.
     >>> results = []
     >>> for test in range(5):
-    ...     results.append(set_total_patrons_count(samples=10000))  # Test the high end
+    ...     results.append(set_total_patrons_count(samples=10000))  # Testing mode
     >>> print(results)
     >>> min(results) >= 444
     True
@@ -101,63 +106,72 @@ def set_total_patrons_count(samples: int = 1) -> int:
     return int(patron_count)
 
 
-def patrons_per_hour(total_patrons: int, hour: int) -> int:
+def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
     """
-    Depending on the hour, set the number of patrons entering the queue.
+    #use these as weights, for each person coming that day, which minute did they arrive? Draw one random # representing the minute, for each person.
     Discrete probability distribution of patrons being added, based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
-    :param total_patrons: A randomized variable, see set_total_patrons_count()
-    :param hour: Int representing hour of day (0 = 10am...)
-    :return: The number of patrons who show up at that hour
-
-    >>> patrons_per_hour(949, 10)
-    33
-    >>> patrons_per_hour(514, 15)
-    114
+    :param total_patrons:
+    :param plot:
+    :return:
+    >>> patrons_per_minute(700)
+    [1,2,3]
+    >>> for i in range(10):
+    ...     patrons_per_minute(700, plot=True)
+    [1,2,3]
     """
-
-    if hour == 0:
-        patrons = total_patrons * 0.035010
-    elif hour == 1:
-        patrons = total_patrons * 0.045726
-    elif hour == 2:
-        patrons = total_patrons * 0.055542
-    elif hour == 3:
-        patrons = total_patrons * 0.136442
-    elif hour == 4:
-        patrons = total_patrons * 0.165399
-    elif hour == 5:
-        patrons = total_patrons * 0.223067
-    elif hour == 6:
-        patrons = total_patrons * 0.199427
-    elif hour == 7:
-        patrons = total_patrons * 0.088998
-    elif hour == 8:
-        patrons = total_patrons * 0.047607
-    elif hour == 9:
-        patrons = total_patrons * 0.002781
-    else:
-        patrons = 0
-    return int(patrons)
+    # Determine RANDOMLY, WITH WEIGHTS, what minute each patron arrived at.
+    hours = np.arange(10)
+    minutes = np.arange(600)
+    probs = []
+    for i in range(600):
+        if i < 60:
+            probs.append(0.035010)
+        elif i < 120:
+            probs.append(0.045726)
+        elif i < 180:
+            probs.append(0.055542)
+        elif i < 240:
+            probs.append(0.136442)
+        elif i < 300:
+            probs.append(0.165399)
+        elif i < 360:
+            probs.append(0.223067)
+        elif i < 420:
+            probs.append(0.199427)
+        elif i < 480:
+            probs.append(0.088998)
+        elif i < 540:
+            probs.append(0.047607)
+        elif i < 600:
+            probs.append(0.002781)
+    patron_dist = random.choices(minutes, weights=probs, k=total_patrons)   # np.random.choice(hours, total_patrons, p=probs)
+    if plot is True:
+        plt.hist(patron_dist,
+                 bins=200,
+                 density=True)
+        plt.show()
+    return patron_dist  # Returns a list of all hours that patrons arrived
 
 
 def run_one_day(fleet) -> dict:
     """
     Simulate one day at the library.
+    MC sim requirement: Return all data, so that it can be analyzed in aggregate.
 
     :return: Returns answers to the following questions, as a dict:
-    - How many computers were in service today?
-    - What was the min and max utilization per hour? (# used / # available, not # in fleet)
-    - How many patrons waited to use a computer?
-    - How many patrons left the queue because the wait was over 1 hour?
+    - How many computers were in service today?                             (Returns 1 int)
+    - What was the utilization per hour? (# computers used / # available)   (Returns a list of floats)
+    - How many patrons waited to use a computer, per hour?                  (Returns a list of ints)
+    - How many patrons left the queue because the wait was over 1 hour?     (Returns 1 int)
     >>> run_one_day(120)
-    {'Computers available': 47, 'Utilization': (0.46808510638297873, 1.0), 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    {'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
     >>> run_one_day(50)
-    {'Computers available': 47, 'Utilization': (0.46808510638297873, 1.0), 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    {'Computers available': 47, 'Utilization': [0.46808510638297873, ..., 1.0], 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
     """
     computers_available = determine_fleet_availability(fleet)
-    daily_results = {"Computers available" : computers_available}
+    daily_results = {"Computers available": computers_available}
     wait_count_by_hour = []
     utilization_by_hour = []
     departed_queue = []
@@ -165,7 +179,7 @@ def run_one_day(fleet) -> dict:
     waiting = 0
     total_patrons_today = set_total_patrons_count()
     for hour in range(hours_open):
-        new_patrons = patrons_per_hour(total_patrons_today, hour)
+        new_patrons = patrons_per_minute(total_patrons_today)
         users = new_patrons + waiting
         # If waited more than 1 hour, leave the line
         if waiting > computers_available:
@@ -178,9 +192,9 @@ def run_one_day(fleet) -> dict:
         else:
             waiting = 0
             utilization = users/computers_available
-        wait_count_by_hour.append(waiting)
-        utilization_by_hour.append(utilization)
-    daily_results['Utilization'] = (min(utilization_by_hour), max(utilization_by_hour))
+        wait_count_by_hour.append(waiting)          # List of ints
+        utilization_by_hour.append(utilization)     # List of floats
+    daily_results['Utilization'] = utilization_by_hour
     daily_results['Wait count per hour'] = wait_count_by_hour
     daily_results['Departed wait queue'] = sum(departed_queue)
     return daily_results
@@ -212,7 +226,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation
-            single_simulation = run_one_day(number_of_devices)
+            single_simulation = V3_run_one_day(number_of_devices)
 
             # Determine the total repair cost for n simulations run
             # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)

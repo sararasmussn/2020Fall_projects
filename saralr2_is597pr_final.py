@@ -106,15 +106,15 @@ def set_total_patrons_count(samples: int = 1) -> int:
     return int(patron_count)
 
 
-def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
+def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     """
     #use these as weights, for each person coming that day, which minute did they arrive? Draw one random # representing the minute, for each person.
     Discrete probability distribution of patrons being added, based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
-    :param total_patrons:
-    :param plot:
-    :return:
+    :param total_patrons: Int yielded from set_total_patrons_count()
+    :param plot: Optional, prints 10 plots to review the distribution of patrons
+    :return: Returns a list of all hours that patrons arrived
     >>> patrons_per_minute(700)
     [1,2,3]
     >>> for i in range(10):
@@ -152,7 +152,7 @@ def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
                  bins=200,
                  density=True)
         plt.show()
-    return patron_dist  # Returns a list of all hours that patrons arrived
+    return patron_dist
 
 
 def run_one_day(fleet) -> dict:

@@ -166,37 +166,96 @@ def run_one_day(fleet) -> dict:
     - How many patrons waited to use a computer, per hour?                  (Returns a list of ints)
     - How many patrons left the queue because the wait was over 1 hour?     (Returns 1 int)
     >>> run_one_day(120)
-    {'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
+    {'Patrons today': 621, 'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
     >>> run_one_day(50)
-    {'Computers available': 47, 'Utilization': [0.46808510638297873, ..., 1.0], 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    {'Patrons today': 621, 'Computers available': 47, 'Utilization': [0.46808510638297873, ..., 1.0], 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
     """
+    hours_open = 10
+
+    # Determine total number of computers and patrons today
     computers_available = determine_fleet_availability(fleet)
-    daily_results = {"Computers available": computers_available}
+    total_patrons_today = set_total_patrons_count()
+    daily_results = {"Patrons today": total_patrons_today, "Computers available": computers_available}
+
+    patron_queue = []
     wait_count_by_hour = []
     utilization_by_hour = []
-    departed_queue = []
-    hours_open = 10
+
     waiting = 0
-    total_patrons_today = set_total_patrons_count()
-    for hour in range(hours_open):
-        new_patrons = patrons_per_minute(total_patrons_today)
-        users = new_patrons + waiting
-        # If waited more than 1 hour, leave the line
-        if waiting > computers_available:
-            leavers = waiting - computers_available
-            departed_queue.append(leavers)
-            users = users - leavers
-        if users > computers_available:
-            waiting = users - computers_available
-            utilization = computers_available/computers_available
+    leavers = 0
+
+    # For each of the patrons today, distribute the patrons' arrival minute randomly
+    ppm = patrons_per_minute(total_patrons_today)
+
+    patron_df = pd.DataFrame(ppm, columns=['Arrival_minute'])
+    patron_df = patron_df.sort_values(['Arrival_minute'])
+    patron_df['Got_computer_minute'] = np.nan
+    patron_df['Wait_time'] = np.nan
+    patron_df['Departed_queue'] = np.nan
+    for arrival_minute in ppm:
+        patron_queue.append({"arrival_minute": arrival_minute})
+
+    # Source: https://www.geeksforgeeks.org/ways-sort-list-dictionaries-values-python-using-lambda-function/
+    patron_queue.sort(key=lambda i: i['arrival_minute'])
+    # COUNT # PATRONS ARRIVED @ A PARICULAR MINUTE
+    counts = patron_df['Arrival_minute'].value_counts()
+
+    # For each new minute...
+    computers_in_use = 0
+    for minute in range(hours_open * 60):
+        # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
+        if minute not in counts.index.values:
+            patrons_this_minute = 0
         else:
-            waiting = 0
-            utilization = users/computers_available
-        wait_count_by_hour.append(waiting)          # List of ints
-        utilization_by_hour.append(utilization)     # List of floats
+            patrons_this_minute = counts[minute]
+            for patrons in range(patrons_this_minute):
+                # UPDATE COMPUTER USAGE
+                # If a computer is available, (length of queue is less than # of computers available)
+                    #  add the current minute to this patron's data (list[minute].append(minute))
+                    # Add Wait time = how long you waited before getting a computer, implies you GOT a computer
+                    # Computers_available -= 1
+                if computers_in_use < computers_available:
+                    # TODO: Figure out how to identify which to update.
+                    patron_queue[minute]["got_computer_minute"] = minute
+                    patron_queue[minute]["wait_time"] = minute - patron_queue[minute]["arrival_minute"]
+                    #patron_df.loc[[patron_df['Arrival_minute'] == minute], ['Got_computer_minute']] = minute
+                    #patron_df['Got_computer_minute'] = minute
+                    #patron_df['Wait_time'] = minute - patron_df['Arrival_minute']
+                    computers_in_use += 1
+                else:
+                    # If a computer is unavailable, people_waiting +=1
+                    waiting += 1
+
+        # UPDATE QUEUE LEAVERS - both people who are done with their hour, and people who waiting over 60 minutes
+        # if minute - patron_df[patron_df['Got_computer_minute'] == 60]:     # TODO: Update 60 to vary w/ the time length they are staying for
+        #     computers_in_use -= 1
+        # if patron_df['Got_computer_minute'] == np.nan and minute - patron_df['Arrival_minute'] > 60:
+        #     patron_df['Departed_queue'] = 1
+        #     leavers += 1
+        #     waiting -= 1
+
+        # List version:
+        for person in patron_queue:     # person = dict
+            # If they are done with their hour, pop.
+            if "got_computer_minute" in person.keys() and minute - person["got_computer_minute"] == 60:
+                patron_queue.remove(person)
+            # If they have been waiting more than an hour... pop. Track how many left
+            if minute - person["arrival_minute"] > 60:
+                patron_queue.remove(person)
+                leavers += 1
+
+    # At the end of each hour, check utilization
+    if len(patron_queue) > computers_available:
+        utilization = computers_available/computers_available
+    else:
+        utilization = len(patron_queue)/computers_available
+
+    wait_count_by_hour.append(waiting)          # List of ints
+    utilization_by_hour.append(utilization)     # List of floats
+
     daily_results['Utilization'] = utilization_by_hour
     daily_results['Wait count per hour'] = wait_count_by_hour
-    daily_results['Departed wait queue'] = sum(departed_queue)
+    daily_results['Departed wait queue'] = leavers
     return daily_results
 
 
@@ -226,7 +285,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation
-            single_simulation = V3_run_one_day(number_of_devices)
+            single_simulation = run_one_day(number_of_devices)
 
             # Determine the total repair cost for n simulations run
             # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)

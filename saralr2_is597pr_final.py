@@ -176,82 +176,62 @@ def run_one_day(fleet) -> dict:
     computers_available = determine_fleet_availability(fleet)
     total_patrons_today = set_total_patrons_count()
     daily_results = {"Patrons today": total_patrons_today, "Computers available": computers_available}
-
-    patron_queue = []
     wait_count_by_hour = []
     utilization_by_hour = []
-
     waiting = 0
     leavers = 0
 
-    # For each of the patrons today, distribute the patrons' arrival minute randomly
+    # For each of the patrons today, distribute the patrons' arrival minutes
     ppm = patrons_per_minute(total_patrons_today)
 
     patron_df = pd.DataFrame(ppm, columns=['Arrival_minute'])
     patron_df = patron_df.sort_values(['Arrival_minute'])
     patron_df['Got_computer_minute'] = np.nan
+    patron_df['Leave_minute'] = np.nan
     patron_df['Wait_time'] = np.nan
     patron_df['Departed_queue'] = np.nan
-    for arrival_minute in ppm:
-        patron_queue.append({"arrival_minute": arrival_minute})
 
-    # Source: https://www.geeksforgeeks.org/ways-sort-list-dictionaries-values-python-using-lambda-function/
-    patron_queue.sort(key=lambda i: i['arrival_minute'])
     # COUNT # PATRONS ARRIVED @ A PARICULAR MINUTE
     counts = patron_df['Arrival_minute'].value_counts()
-
     # For each new minute...
     computers_in_use = 0
     for minute in range(hours_open * 60):
-        # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
+        # UPDATE COMPUTER USAGE
         if minute not in counts.index.values:
+            # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
             patrons_this_minute = 0
         else:
             patrons_this_minute = counts[minute]
-            for patrons in range(patrons_this_minute):
-                # UPDATE COMPUTER USAGE
-                # If a computer is available, (length of queue is less than # of computers available)
-                    #  add the current minute to this patron's data (list[minute].append(minute))
-                    # Add Wait time = how long you waited before getting a computer, implies you GOT a computer
-                    # Computers_available -= 1
-                if computers_in_use < computers_available:
-                    # TODO: Figure out how to identify which to update.
-                    patron_queue[minute]["got_computer_minute"] = minute
-                    patron_queue[minute]["wait_time"] = minute - patron_queue[minute]["arrival_minute"]
-                    #patron_df.loc[[patron_df['Arrival_minute'] == minute], ['Got_computer_minute']] = minute
-                    #patron_df['Got_computer_minute'] = minute
-                    #patron_df['Wait_time'] = minute - patron_df['Arrival_minute']
-                    computers_in_use += 1
-                else:
-                    # If a computer is unavailable, people_waiting +=1
-                    waiting += 1
-
-        # UPDATE QUEUE LEAVERS - both people who are done with their hour, and people who waiting over 60 minutes
-        # if minute - patron_df[patron_df['Got_computer_minute'] == 60]:     # TODO: Update 60 to vary w/ the time length they are staying for
-        #     computers_in_use -= 1
-        # if patron_df['Got_computer_minute'] == np.nan and minute - patron_df['Arrival_minute'] > 60:
-        #     patron_df['Departed_queue'] = 1
-        #     leavers += 1
-        #     waiting -= 1
-
-        # List version:
-        for person in patron_queue:     # person = dict
-            # If they are done with their hour, pop.
-            if "got_computer_minute" in person.keys() and minute - person["got_computer_minute"] == 60:
-                patron_queue.remove(person)
-            # If they have been waiting more than an hour... pop. Track how many left
-            if minute - person["arrival_minute"] > 60:
-                patron_queue.remove(person)
-                leavers += 1
-
-    # At the end of each hour, check utilization
-    if len(patron_queue) > computers_available:
-        utilization = computers_available/computers_available
-    else:
-        utilization = len(patron_queue)/computers_available
-
-    wait_count_by_hour.append(waiting)          # List of ints
-    utilization_by_hour.append(utilization)     # List of floats
+            if computers_in_use < computers_available:
+                # If computer available, add # patrons to computers in use
+                computers_in_use += patrons_this_minute
+                # Find and update ONLY df rows where "Arrival_minute" = minute
+                # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + 60  # Add when they got a computer   # TODO: Update 60 to vary w/ the time length they are staying for
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_time']] = (minute - patron_df['Arrival_minute'])    # Add wait time (how long you waited before getting a computer, implies you GOT a computer)
+            else:
+                # If a computer is unavailable, people_waiting += # patrons
+                waiting += patrons_this_minute
+        # UPDATE QUEUE LEAVERS
+        search_1 = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == minute
+        sl = search_1['Leave_minute'].tolist()      # Turn that into a list, and see if it's been 60 minutes (handles multiple patrons at 1 minute)
+        if len(sl) > 0 and minute == sl[0]:
+            # Free up computer when patron reaches 1 hour
+            computers_in_use -= 1
+        # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
+        search_2 = patron_df[(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute)]
+        sl2 = search_2['Arrival_minute'].tolist()
+        if len(sl2) > 0 and minute - sl2[0] > 60:
+            # Count people who wait over n minutes
+            patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Departed_queue']] = 1
+            leavers += 1
+            waiting -= 1
+        # COLLECT STATS @ END OF EACH HOUR
+        if minute in range(59, (hours_open*60), 60):
+            utilization = computers_in_use/computers_available
+            utilization_by_hour.append(utilization)
+            wait_count_by_hour.append(waiting)
 
     daily_results['Utilization'] = utilization_by_hour
     daily_results['Wait count per hour'] = wait_count_by_hour

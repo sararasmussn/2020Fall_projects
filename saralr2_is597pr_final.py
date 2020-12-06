@@ -160,11 +160,12 @@ def run_one_day(fleet) -> dict:
     Simulate one day at the library.
     MC sim requirement: Return all data, so that it can be analyzed in aggregate.
 
-    :return: Returns answers to the following questions, as a dict:
-    - How many computers were in service today?                             (Returns 1 int)
+    :return: TODO: Return Dataframe shaped (1,26)
+    Returns answers to the following questions, as a dict:
+    - How many computers were in service today?                             (Returns int)
     - What was the utilization per hour? (# computers used / # available)   (Returns a list of floats)
     - How many patrons waited to use a computer, per hour?                  (Returns a list of ints)
-    - How many patrons left the queue because the wait was over 1 hour?     (Returns 1 int)
+    - How many patrons left the queue because the wait was over 1 hour?     (Returns int)
     >>> run_one_day(120)
     {'Patrons today': 621, 'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
     >>> run_one_day(50)
@@ -188,7 +189,7 @@ def run_one_day(fleet) -> dict:
     patron_df = patron_df.sort_values(['Arrival_minute'])
     patron_df['Got_computer_minute'] = np.nan
     patron_df['Leave_minute'] = np.nan
-    patron_df['Wait_time'] = np.nan
+    patron_df['Wait_duration'] = np.nan
     patron_df['Departed_queue'] = np.nan
 
     # COUNT # PATRONS ARRIVED @ A PARICULAR MINUTE
@@ -209,8 +210,9 @@ def run_one_day(fleet) -> dict:
                 # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + 60  # Add when they got a computer   # TODO: Update 60 to vary w/ the time length they are staying for
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_time']] = (minute - patron_df['Arrival_minute'])    # Add wait time (how long you waited before getting a computer, implies you GOT a computer)
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (minute - patron_df['Arrival_minute'])    # Add wait time (how long you waited before getting a computer, implies you GOT a computer)
             else:
+                # TODO: Handle patrons who have to wait for a computer - the program currently jumps over them!
                 # If a computer is unavailable, people_waiting += # patrons
                 waiting += patrons_this_minute
         # UPDATE QUEUE LEAVERS
@@ -233,28 +235,40 @@ def run_one_day(fleet) -> dict:
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
 
-    daily_results['Utilization'] = utilization_by_hour
+    daily_results['Utilization per hour'] = utilization_by_hour
     daily_results['Wait count per hour'] = wait_count_by_hour
     daily_results['Departed wait queue'] = leavers
+    # TODO: Add wait duration results. This data is collected at a per-patron grain, but we are reporting back at daily grain. Yield min, mean, max wait for the whole day. (Note, Max is never higher than whatever I set it to be)
     return daily_results
 
 
 def run_simulation(inventory_qtys: list, number_of_days: int= 1):
     """
     Run as many days of simulation run_one_day() as specified. Collect all the stats. Print a summary to console.
+    TODO: Generates a DataFrame shaped (number_of_days rows, 30 cols) with cols:
+        Inventory_qtys: Int
+        Acquisition_cost: Int
+        Repair_cost: Int
+        Total_cost: Int
+        [ attach to cols from df returned by run_one_day() ]
+    1 row = 1 day; after each day, concat
 
-    :param number_of_days: Number of times the simulation should be run. 1 year=365; 4 years=1,460
+    :param number_of_days: Number of times the simulation should be run for each inventory_qty. 1 year=365; 4 years=1,460
     :param inventory_qtys: Devices qtys to simulate.
     :return: Answers to these questions:
-    - What was the total cost of the service provided?
+    TODO: Group up by Inventory_qtys to derive min, median, maxes. NOTE! For some cols, this is by day. For others, by hour.
+    - COST_DIST: What was the min/median/max total cost of the service provided?
         (# devices * price of device) + (max(# devices unavailable) * repair fee)
-    - What was the min/median/max utilization rate for all simulations run?
-    - What was the average # of drop-offs (people who left because they waited longer than 30 minutes) for all sims run?
-    From this, the user can discern: How many computers should we buy?
+    - UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
+    - WAIT_DURATION_DIST: What was the min/median/max wait time for patrons to get a computer, for all sims run?
+    - NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
+    - LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
+    From this, the user can discern: How many computers should we buy in the next ITAD (IT asset disposition) cycle?
     """
     print("Running simulation of", number_of_days, "days...\n")
 
     # Run the simulation once for each device count
+
     avg_cost = []
     avg_util = []
     users_waiting = []
@@ -294,7 +308,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
 def main():
     # TODO: Convert to user input
     # n = input("How many days should the simulation run? ")
-    n = 1460
+    n = 100
     run_simulation([20, 80, 120, 160, 200], number_of_days=n)
 
 

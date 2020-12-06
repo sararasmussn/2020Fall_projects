@@ -155,17 +155,17 @@ def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
     return patron_dist  # Returns a list of all hours that patrons arrived
 
 
-def run_one_day(fleet) -> dict:
+def run_one_day(fleet: int) -> pd.DataFrame:
     """
     Simulate one day at the library.
     MC sim requirement: Return all data, so that it can be analyzed in aggregate.
 
-    :return: TODO: Return Dataframe shaped (1,26)
-    Returns answers to the following questions, as a dict:
-    - How many computers were in service today?                             (Returns int)
-    - What was the utilization per hour? (# computers used / # available)   (Returns a list of floats)
-    - How many patrons waited to use a computer, per hour?                  (Returns a list of ints)
-    - How many patrons left the queue because the wait was over 1 hour?     (Returns int)
+    :param fleet: number_of_devices in the IT fleet
+    :return: Return Dataframe shaped (1,26) with answers to the following questions: (n=hours_open)
+    - How many computers were in service today?                             (dtype int)
+    - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
+    - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
+    - How many patrons left the queue because the wait was longer than TODO?     (n columns with dtype int)
     >>> run_one_day(120)
     {'Patrons today': 621, 'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
     >>> run_one_day(50)
@@ -176,11 +176,13 @@ def run_one_day(fleet) -> dict:
     # Determine total number of computers and patrons today
     computers_available = determine_fleet_availability(fleet)
     total_patrons_today = set_total_patrons_count()
-    daily_results = {"Patrons today": total_patrons_today, "Computers available": computers_available}
+    # Source: https://eulertech.wordpress.com/2017/11/28/pandas-valueerror-if-using-all-scalar-values-you-must-pass-an-index/
+    daily_results = pd.DataFrame.from_dict({'Patrons today': [total_patrons_today], 'Computers available': [computers_available]}, orient='columns')
     wait_count_by_hour = []
     utilization_by_hour = []
     waiting = 0
     leavers = 0
+    n = 1
 
     # For each of the patrons today, distribute the patrons' arrival minutes
     ppm = patrons_per_minute(total_patrons_today)
@@ -198,46 +200,60 @@ def run_one_day(fleet) -> dict:
     computers_in_use = 0
     for minute in range(hours_open * 60):
         # UPDATE COMPUTER USAGE
+        while waiting > 0 and (computers_in_use < computers_available):
+            comps_free = computers_available - computers_in_use
+            # for comps_free:
+            # find patron_df min(arrival_time) && got_comp_min.isna == True
+            # update got_comp_min == min, leave_min == min + 60
+            # wait duration = got_comp_min - min
+            waiting -= comps_free
+            computers_in_use += comps_free
+
         if minute not in counts.index.values:
             # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
             patrons_this_minute = 0
         else:
             patrons_this_minute = counts[minute]
-            if computers_in_use < computers_available:
+            if computers_in_use == computers_available:
+                # If a computer is unavailable, people_waiting += # patrons
+                waiting += patrons_this_minute
+                # Add wait time (how long you waited before getting a computer OR leaving, max wait time = length of time they are "willing" to wait))
+            elif computers_in_use < computers_available:
                 # If computer available, add # patrons to computers in use
                 computers_in_use += patrons_this_minute
                 # Find and update ONLY df rows where "Arrival_minute" = minute
                 # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + 60  # Add when they got a computer   # TODO: Update 60 to vary w/ the time length they are staying for
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (minute - patron_df['Arrival_minute'])    # Add wait time (how long you waited before getting a computer, implies you GOT a computer)
-            else:
-                # TODO: Handle patrons who have to wait for a computer - the program currently jumps over them!
-                # If a computer is unavailable, people_waiting += # patrons
-                waiting += patrons_this_minute
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patron_df['Got_computer_minute'] - patron_df['Arrival_minute'])
         # UPDATE QUEUE LEAVERS
-        search_1 = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == minute
-        sl = search_1['Leave_minute'].tolist()      # Turn that into a list, and see if it's been 60 minutes (handles multiple patrons at 1 minute)
-        if len(sl) > 0 and minute == sl[0]:
+        session_end = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == now
+        se = session_end['Leave_minute'].tolist()      # Turn that into a list, and see if it's been 60 minutes (handles multiple patrons at 1 minute)
+        if len(se) > 0 and minute == se[0]:
             # Free up computer when patron reaches 1 hour
             computers_in_use -= 1
         # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
-        search_2 = patron_df[(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute)]
-        sl2 = search_2['Arrival_minute'].tolist()
-        if len(sl2) > 0 and minute - sl2[0] > 60:
-            # Count people who wait over n minutes
-            patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Departed_queue']] = 1
-            leavers += 1
-            waiting -= 1
+
+        # Count people who have NOT gotten a computer AND waited over n minutes, 1) leave the queue, 2) set wait duration
+        # TODO: Make wait time of 60 an adjustable value
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
+        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
+        if len(done_waiting) > 0:
+            waiting -= len(done_waiting)
+            leavers += len(done_waiting) # TODO: get rid of me later
         # COLLECT STATS @ END OF EACH HOUR
         if minute in range(59, (hours_open*60), 60):
             utilization = computers_in_use/computers_available
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
+            daily_results["utilization" + str(n)] = utilization
+            daily_results["num_waiting" + str(n)] = waiting
+            n+=1
 
-    daily_results['Utilization per hour'] = utilization_by_hour
-    daily_results['Wait count per hour'] = wait_count_by_hour
-    daily_results['Departed wait queue'] = leavers
+    # daily_results['Utilization per hour'] = utilization_by_hour
+    # daily_results['Wait count per hour'] = wait_count_by_hour
+    daily_results['Departed wait queue'] = leavers # Update to sum the departed queue column in patron_df
     # TODO: Add wait duration results. This data is collected at a per-patron grain, but we are reporting back at daily grain. Yield min, mean, max wait for the whole day. (Note, Max is never higher than whatever I set it to be)
     return daily_results
 

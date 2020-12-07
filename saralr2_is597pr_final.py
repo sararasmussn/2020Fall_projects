@@ -14,6 +14,7 @@ from collections import Counter
 def calculate_pert(low, likely, high, weight=4) -> float:
     """
     Simple PERT estimate = (a + 4b + c)/6 used in determining multiple variables
+    Source: https://mediaspace.illinois.edu/media/t/1_lawwsyso
 
     :param low: Lowest number a in distribution
     :param likely: Middle number b in distribution
@@ -35,8 +36,8 @@ def determine_fleet_availability(total_inventory: int) -> int:
     Uses a PERT distribution.
     ---
     "Mean time between failures (MTBF) is the predicted elapsed time between inherent failures of a mechanical or electronic system, during normal system operation.
-    MTBF can be calculated as the arithmetic mean (average) time between failures of a system." (Wikipedia)
-    Average laptop failure rate after 2 years = 19%; after 3 years = 31% (Sands and Tseng)
+    MTBF can be calculated as the arithmetic mean (average) time between failures of a system." (Source: Wikipedia)
+    Average laptop failure rate after 2 years = 19%; after 3 years = 31% (Source: Sands and Tseng)
     - For each machine, there is some probability of failure
     - For each day, count the number of machines failed
 
@@ -60,7 +61,7 @@ def select_reservation_length() -> int:
     RANDOMIZED VARIABLE
     For one computer reservation, randomly select the reservation length:
     Options for length of use selected by the patrons: 15 or 1 hour.
-    Discrete distribution between two options. Not 50/50. Probably skewed more like 30/70.
+    Discrete distribution between two options. Not 50/50. Probably skewed more like 30/70. (Source: Personal experience)
 
     :return: The length of time
     >>> results = Counter()
@@ -113,6 +114,7 @@ def set_total_patrons_count(samples: int = 1) -> int:
     # In fact, CPL data shows that usage decreased for the last 3 years, specifically by 13.5% from 2018 to 2019.
     low_service = (514 * .865)      # I've intentionally lowered the low end by 13.5%.
     # But it's also likely that due to the economic crisis, usage will go up (Jaeger et al., 2011).
+    peak_service = calculate_pert(622, 700, 949, 6)
     peak_service = random.uniform(622, 949)     # Uniform distribution within this range. 949 was the highest number in 2016.
     # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_07/Probability_Distributions.ipynb & https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.beta.html
     g = np.random.default_rng()
@@ -184,7 +186,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     - How many computers were in service today?                             (dtype int)
     - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
     - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
-    - How many patrons left the queue because the wait was longer than TODO?     (n columns with dtype int)
+    - How many patrons left the queue because the wait was longer than wait_length()?     (n columns with dtype int)
     >>> df = run_one_day(50)
     >>> df.shape
     (1, 26)
@@ -252,7 +254,6 @@ def run_one_day(fleet: int) -> pd.DataFrame:
         if len(se) > 0 and minute == se[0]:
             computers_in_use -= 1
         # Count people who have NOT gotten a computer AND waited over set_wait_length() minutes, 1) leave the queue, 2) set wait duration
-        # TODO: Make wait time of 60 an adjustable value
         wait_length = set_wait_length()
         patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Departed_queue']] = 1
         patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Wait_duration']] = wait_length
@@ -265,7 +266,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
             daily_results["utilization " + str(n)] = utilization
-            daily_results["num_waiting " + str(n)] = waiting
+            daily_results["num_waiting " + str(n)] = abs(waiting) # Prevent negative numbers
             n += 1
     daily_results['Departed wait queue'] = patron_df['Departed_queue'].sum()
     daily_results['min wait duration'] = patron_df['Wait_duration'].min()
@@ -276,7 +277,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
 
 def run_simulation(inventory_qtys: list, number_of_days: int = 1):
     """
-    Run as many days of simulation run_one_day() as specified. Collect all the stats. Print a summary to console.
+    Run as many days of simulation run_one_day() as specified.
     Generates a DataFrame shaped (number_of_days rows, 30 cols) with:
         26 cols returned by run_one_day()
         Inventory_qty: Int
@@ -285,7 +286,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1):
         Total_cost: Int
     1 row = 1 day; after each day, concat
 
-    :param number_of_days: Number of times the simulation should be run for each inventory_qty. 1 year=365; 4 years=1,460
+    :param number_of_days: Number of times the simulation should be run for each inventory_qty.
     :param inventory_qtys: Devices qtys to simulate.
     :return: Answers to these questions:
     - COST_DIST: What was the min/median/max total cost of the service provided?
@@ -308,13 +309,12 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1):
             # Call the single simulation
             single_simulation = run_one_day(number_of_devices)
             # Determine costs for n simulations run
-            single_simulation['Acquisition cost'] = acquisition_cost
+            single_simulation['Inventory qty'] = number_of_devices
+            single_simulation.loc[lambda x: x['Inventory qty'] == number_of_devices, ['Acquisition cost']] = acquisition_cost
             # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
             single_simulation['Repair cost'] = (number_of_devices - single_simulation['Computers available']) * 95
             single_simulation['Total cost'] = acquisition_cost + single_simulation['Repair cost']
-            single_simulation['Inventory qty'] = number_of_devices
             sims.append(single_simulation)
-
         sim_results = pd.concat(sims, ignore_index=True)
 
     # TODO: Finalize output formatting
@@ -330,19 +330,21 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1):
     mins = sim_results.groupby('Inventory qty').agg([np.min])
     meds = sim_results.groupby('Inventory qty').agg([np.median])
     maxes = sim_results.groupby('Inventory qty').agg([np.max])
-    descriptive_stats = pd.concat([mins, meds, maxes])
-    return descriptive_stats    # Shape (# inventory counts, 87)
+    #descriptive_stats = pd.concat([mins, meds, maxes])      # TODO: This also does not work as expected. Better to return separate dfs?
+    return mins, meds, maxes    # Shape (# inventory counts, 87)
 
 
 def main():
     """
-    Main function
+    Output results to CSV files
     :return: Nothing
     """
     # days = input("How many days should the simulation run? ")
-    days = 200
-    outfile = run_simulation([75, 150, 225, 300], number_of_days=days)
-    outfile.to_csv('results.csv')
+    days = 1460                          # 1 year=365; 4 years=1,460
+    outfile_min, outfile_med, outfile_max = run_simulation([75, 150, 225, 300], number_of_days=days)
+    outfile_min.to_csv('min.csv')
+    outfile_med.to_csv('median.csv')
+    outfile_max.to_csv('max.csv')
 
 
 if __name__ == '__main__':

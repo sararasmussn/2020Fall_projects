@@ -8,6 +8,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from collections import Counter
 
 
 def calculate_pert(low, likely, high, weight=4) -> float:
@@ -57,17 +58,27 @@ def determine_fleet_availability(total_inventory: int) -> int:
 def select_reservation_length() -> int:
     """
     RANDOMIZED VARIABLE
-    Binomial distribution.
     For one computer reservation, randomly select the reservation length:
     Options for length of use selected by the patrons: 15 or 1 hour.
     Discrete distribution between two options. Not 50/50. Probably skewed more like 25/75.
-    Computer use policy:
-    After each computer use, there will be a 15-minute delay (where the computer is unavailable to be used)
-        so that staff can sanitize the area per the library’s COVID-19 cleaning procedures.
 
     :return: The length of time
+    >>> results = Counter()
+    >>> tests = 100000
+    >>> for test in range(tests):
+    ...     if select_reservation_length() == 15:
+    ...         results[15] += 1
+    ...     else:
+    ...         results[60] += 1
+    >>> .72 <= (results[60] / tests) <= .78
+    True
+    >>> .22 <= (results[15] / tests) <= .28
+    True
     """
-    return 1
+    choices = [15, 60]
+    skew = [30, 70]
+    patron_dist = random.choices(choices, weights=skew, k=1)
+    return patron_dist[0]
 
 
 def set_total_patrons_count(samples: int = 1) -> int:
@@ -98,15 +109,13 @@ def set_total_patrons_count(samples: int = 1) -> int:
     if samples > 1:
         # Testing my distribution: Does it look like the CPL data?
         patron_array = (low_service * patron_pct) + low_service
-        plt.hist(patron_array,
-                        bins=200,
-                        density=True)
+        plt.hist(patron_array, bins=200, density=True)
         plt.show()
     patron_count = (low_service * patron_pct[0]) + low_service
     return int(patron_count)
 
 
-def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
+def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     """
     #use these as weights, for each person coming that day, which minute did they arrive? Draw one random # representing the minute, for each person.
     Discrete probability distribution of patrons being added, based on Seattle Public Library data.
@@ -117,12 +126,11 @@ def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
     :return:
     >>> patrons_per_minute(700)
     [1,2,3]
-    >>> for i in range(10):
+    >>> for z in range(10):
     ...     patrons_per_minute(700, plot=True)
     [1,2,3]
     """
     # Determine RANDOMLY, WITH WEIGHTS, what minute each patron arrived at.
-    hours = np.arange(10)
     minutes = np.arange(600)
     probs = []
     for i in range(600):
@@ -146,7 +154,7 @@ def patrons_per_minute(total_patrons: int, plot: bool=False) -> list:
             probs.append(0.047607)
         elif i < 600:
             probs.append(0.002781)
-    patron_dist = random.choices(minutes, weights=probs, k=total_patrons)   # np.random.choice(hours, total_patrons, p=probs)
+    patron_dist = random.choices(minutes, weights=probs, k=total_patrons)
     if plot is True:
         plt.hist(patron_dist,
                  bins=200,
@@ -192,7 +200,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     patron_df['Wait_duration'] = np.nan
     patron_df['Departed_queue'] = np.nan
 
-    # COUNT # PATRONS ARRIVED @ A PARICULAR MINUTE
+    # COUNT # PATRONS ARRIVED @ A PARTICULAR MINUTE
     counts = patron_df['Arrival_minute'].value_counts()
     # For each new minute...
     computers_in_use = 0
@@ -205,7 +213,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             # TODO: Note when 2+ patrons arrive in same minute, this will update everyone with a computer, even if only 1 computer is available
             # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
             patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
-            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + 60
+            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
             patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patron_df['Arrival_minute']
             waiting -= comps_free
             computers_in_use += comps_free
@@ -224,7 +232,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
                 # Find and update ONLY df rows where "Arrival_minute" = minute
                 # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + 60  # Add when they got a computer   # TODO: Update 60 to vary w/ the time length they are staying for
+                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they got a computer
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patron_df['Got_computer_minute'] - patron_df['Arrival_minute'])
         # UPDATE QUEUE LEAVERS
         # Free up computer when patron reaches 1 hour
@@ -246,7 +254,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             wait_count_by_hour.append(waiting)
             daily_results["utilization " + str(n)] = utilization
             daily_results["num_waiting " + str(n)] = waiting
-            n+=1
+            n += 1
     daily_results['Departed wait queue'] = patron_df['Departed_queue'].sum()
     daily_results['min wait duration'] = patron_df['Wait_duration'].min()
     daily_results['median wait duration'] = patron_df['Wait_duration'].median()
@@ -254,7 +262,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     return daily_results
 
 
-def run_simulation(inventory_qtys: list, number_of_days: int= 1):
+def run_simulation(inventory_qtys: list, number_of_days: int = 1):
     """
     Run as many days of simulation run_one_day() as specified. Collect all the stats. Print a summary to console.
     Generates a DataFrame shaped (number_of_days rows, 30 cols) with:
@@ -307,16 +315,19 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
     # Percent format: {:2.2%}
     # Big number format: {:,}
 
-    descriptive_stats = sim_results.groupby('Inventory qty').agg([np.min, np.median, np.max])
+    mins = sim_results.groupby('Inventory qty').agg([np.min])
+    meds = sim_results.groupby('Inventory qty').agg([np.median])
+    maxes = sim_results.groupby('Inventory qty').agg([np.max])
+    descriptive_stats = pd.concat([mins, meds, maxes])
     return descriptive_stats    # Shape (# inventory counts, 87)
 
 
 def main():
     # days = input("How many days should the simulation run? ")
-    days = 2
-    outfile = run_simulation([50, 100, 150, 200, 250], number_of_days=days)
+    days = 200
+    outfile = run_simulation([75, 150, 225, 300], number_of_days=days)
     outfile.to_csv('results.csv')
+
 
 if __name__ == '__main__':
     main()
-

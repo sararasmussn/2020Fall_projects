@@ -11,7 +11,7 @@ At the same time, libraries face growing constraints to their budgets and regula
 
 Striking a balance between these two, I propose a tool to simulate public library computer utilization and determine the optimal number of computers to make available at a library, relative to demand. (1) 
 
-I intend to use three datasets, linked below, to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each location. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as computers and tablets.
+I intend to use three datasets, linked below, to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each of its branch location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each branch. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as computers and tablets.
 
 Together, this information can help me determine what the demand for computers might look like by time of day, day of the week, and month of the year. 
 
@@ -27,7 +27,16 @@ Variables (also a work in progress):
 
 Hypothesis: The more computers you have in one location, the more people will use those computers, but also the higher the overall cost of the service.  
 However, there will be a tipping point where computers would exceed demand, decreasing utilization rates.  
-I am interested in finding the “point of convergence” for the most cost-effective number of computers to maintain.  
+I am interested in finding the “point of convergence” for the most cost-effective number of computers to maintain.
+
+Cost measures:
+- Device acquisition and maintenance 
+- Device utilization rates
+
+Service quality measures:
+- Number of people who waited for a computer 
+- How long patrons waited for a computer (min, mean, max) 
+- Number of people who departed because the wait was too long
 
 Bibliography:
 Please see my bibliography.md for citations and project data sources.

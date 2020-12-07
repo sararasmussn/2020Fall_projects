@@ -11,9 +11,7 @@ At the same time, libraries face growing constraints to their budgets and regula
 
 Striking a balance between these two, I propose a tool to simulate public library computer utilization and determine the optimal number of computers to make available at a library, relative to demand.
 
-I intend to use three datasets, linked below, to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each of its branch location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each branch. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as computers and tablets.
-
-Together, this information can help me determine what the demand for computers might look like by time of day, day of the week, and month of the year. 
+I use open data from Chicago Public Library and Seattle Public Library to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each of its branch location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each branch. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as laptops and tablets.
 
 ## Fixed business rules
 - Open hours at the library (10AM-8PM for all days: 10 open hours)

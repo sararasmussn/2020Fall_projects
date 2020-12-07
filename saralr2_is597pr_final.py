@@ -166,10 +166,9 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
     - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
     - How many patrons left the queue because the wait was longer than TODO?     (n columns with dtype int)
-    >>> run_one_day(120)
-    {'Patrons today': 621, 'Computers available': 47, 'Utilization': (0.46808510638297873, ..., 1.0), 'Wait count per hour': [0, ..., 0], 'Departed wait queue': 243}
-    >>> run_one_day(50)
-    {'Patrons today': 621, 'Computers available': 47, 'Utilization': [0.46808510638297873, ..., 1.0], 'Wait count per hour': [0, 0, 0, 41, 101, 144, 129, 57, 30, 0], 'Departed wait queue': 243}
+    >>> df = run_one_day(50)
+    >>> df.shape
+    (1, 26)
     """
     hours_open = 10
 
@@ -181,7 +180,6 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     wait_count_by_hour = []
     utilization_by_hour = []
     waiting = 0
-    leavers = 0
     n = 1
 
     # For each of the patrons today, distribute the patrons' arrival minutes
@@ -202,15 +200,17 @@ def run_one_day(fleet: int) -> pd.DataFrame:
         # UPDATE COMPUTER USAGE
         while waiting > 0 and (computers_in_use < computers_available):
             comps_free = computers_available - computers_in_use
-            # for comps_free:
-            # find patron_df min(arrival_time) && got_comp_min.isna == True
-            # update got_comp_min == min, leave_min == min + 60
-            # wait duration = got_comp_min - min
+            # Return a series or int w/ min(arrival minute) where got_computer_minute is null
+            oldest_arrive_min = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Departed_queue'].isnull() == True)].min()
+            # TODO: Note when 2+ patrons arrive in same minute, this will update everyone with a computer, even if only 1 computer is available
+            # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
+            patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
+            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + 60
+            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patron_df['Arrival_minute']
             waiting -= comps_free
             computers_in_use += comps_free
-
+        # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
         if minute not in counts.index.values:
-            # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
             patrons_this_minute = 0
         else:
             patrons_this_minute = counts[minute]
@@ -227,52 +227,47 @@ def run_one_day(fleet: int) -> pd.DataFrame:
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + 60  # Add when they got a computer   # TODO: Update 60 to vary w/ the time length they are staying for
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patron_df['Got_computer_minute'] - patron_df['Arrival_minute'])
         # UPDATE QUEUE LEAVERS
+        # Free up computer when patron reaches 1 hour
         session_end = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == now
         se = session_end['Leave_minute'].tolist()      # Turn that into a list, and see if it's been 60 minutes (handles multiple patrons at 1 minute)
         if len(se) > 0 and minute == se[0]:
-            # Free up computer when patron reaches 1 hour
             computers_in_use -= 1
-        # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
-
         # Count people who have NOT gotten a computer AND waited over n minutes, 1) leave the queue, 2) set wait duration
         # TODO: Make wait time of 60 an adjustable value
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
-        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
+        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() is True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
         if len(done_waiting) > 0:
             waiting -= len(done_waiting)
-            leavers += len(done_waiting) # TODO: get rid of me later
         # COLLECT STATS @ END OF EACH HOUR
         if minute in range(59, (hours_open*60), 60):
             utilization = computers_in_use/computers_available
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
-            daily_results["utilization" + str(n)] = utilization
-            daily_results["num_waiting" + str(n)] = waiting
+            daily_results["utilization " + str(n)] = utilization
+            daily_results["num_waiting " + str(n)] = waiting
             n+=1
-
-    # daily_results['Utilization per hour'] = utilization_by_hour
-    # daily_results['Wait count per hour'] = wait_count_by_hour
-    daily_results['Departed wait queue'] = leavers # Update to sum the departed queue column in patron_df
-    # TODO: Add wait duration results. This data is collected at a per-patron grain, but we are reporting back at daily grain. Yield min, mean, max wait for the whole day. (Note, Max is never higher than whatever I set it to be)
+    daily_results['Departed wait queue'] = patron_df['Departed_queue'].sum()
+    daily_results['min wait duration'] = patron_df['Wait_duration'].min()
+    daily_results['median wait duration'] = patron_df['Wait_duration'].median()
+    daily_results['max wait duration'] = patron_df['Wait_duration'].max()
     return daily_results
 
 
 def run_simulation(inventory_qtys: list, number_of_days: int= 1):
     """
     Run as many days of simulation run_one_day() as specified. Collect all the stats. Print a summary to console.
-    TODO: Generates a DataFrame shaped (number_of_days rows, 30 cols) with cols:
-        Inventory_qtys: Int
+    Generates a DataFrame shaped (number_of_days rows, 30 cols) with:
+        26 cols returned by run_one_day()
+        Inventory_qty: Int
         Acquisition_cost: Int
         Repair_cost: Int
         Total_cost: Int
-        [ attach to cols from df returned by run_one_day() ]
     1 row = 1 day; after each day, concat
 
     :param number_of_days: Number of times the simulation should be run for each inventory_qty. 1 year=365; 4 years=1,460
     :param inventory_qtys: Devices qtys to simulate.
     :return: Answers to these questions:
-    TODO: Group up by Inventory_qtys to derive min, median, maxes. NOTE! For some cols, this is by day. For others, by hour.
     - COST_DIST: What was the min/median/max total cost of the service provided?
         (# devices * price of device) + (max(# devices unavailable) * repair fee)
     - UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
@@ -281,52 +276,46 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
     - LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
     From this, the user can discern: How many computers should we buy in the next ITAD (IT asset disposition) cycle?
     """
+    sim_results = pd.DataFrame()
     print("Running simulation of", number_of_days, "days...\n")
-
     # Run the simulation once for each device count
-
-    avg_cost = []
-    avg_util = []
-    users_waiting = []
+    sims = []
     for number_of_devices in inventory_qtys:
         # Acquisition is a fixed cost based on the number of devices in inventory
         acquisition_cost = (number_of_devices * 375)    # Your average Chromebook price
-
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation
             single_simulation = run_one_day(number_of_devices)
-
-            # Determine the total repair cost for n simulations run
+            # Determine costs for n simulations run
+            single_simulation['Acquisition cost'] = acquisition_cost
             # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
-            repair_cost = ((number_of_devices - single_simulation['Computers available']) * 95)
-            total_cost = acquisition_cost + repair_cost
-            avg_cost.append(total_cost)
+            single_simulation['Repair cost'] = (number_of_devices - single_simulation['Computers available']) * 95
+            single_simulation['Total cost'] = acquisition_cost + single_simulation['Repair cost']
+            single_simulation['Inventory qty'] = number_of_devices
+            sims.append(single_simulation)
 
-            # Determine utilization for n simulations run
-            utilization = sum(single_simulation['Utilization'])/len(single_simulation['Utilization'])
-            avg_util.append(utilization)
+        sim_results = pd.concat(sims, ignore_index=True)
 
-            # Determine avg wait time over n simulations run
-            # users_waiting.append(sum(single_simulation['Users Waiting']))
+    # TODO: Finalize output formatting
+    # For qty in inventory_qtys, print the qty devices
+    # - BY DAY: COST_DIST: What was the min/median/max costs of the service provided?
+    # - BY HOUR: UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
+    # - BY HOUR: NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
+    # - BY DAY: LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
+    # Cost format: ${:,.2f}
+    # Percent format: {:2.2%}
+    # Big number format: {:,}
 
-        total_waiting = sum(users_waiting)
-        final_cost = sum(avg_cost)/len(avg_cost)
-        final_util = sum(avg_util)/len(avg_util)
-        print("# Devices: {}\nAvg cost: ${:,.2f}\t\tAvg utilization: {:2.2%}\t\t Total users who waited: {:,}\n".format(number_of_devices, final_cost, final_util, total_waiting))
-
-        # Clear these variables at the end of each loop
-        avg_util = []
-        avg_cost = []
-        users_waiting = []
+    descriptive_stats = sim_results.groupby('Inventory qty').agg([np.min, np.median, np.max])
+    return descriptive_stats    # Shape (# inventory counts, 87)
 
 
 def main():
-    # TODO: Convert to user input
-    # n = input("How many days should the simulation run? ")
-    n = 100
-    run_simulation([20, 80, 120, 160, 200], number_of_days=n)
-
+    # days = input("How many days should the simulation run? ")
+    days = 2
+    outfile = run_simulation([20, 100, 200], number_of_days=days)
+    outfile.to_csv('results.csv')
 
 if __name__ == '__main__':
     main()

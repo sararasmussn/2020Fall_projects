@@ -204,7 +204,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             oldest_arrive_min = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Departed_queue'].isnull() == True)].min()
             # TODO: Note when 2+ patrons arrive in same minute, this will update everyone with a computer, even if only 1 computer is available
             # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
-            patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
+            patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
             patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + 60
             patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patron_df['Arrival_minute']
             waiting -= comps_free
@@ -234,9 +234,9 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             computers_in_use -= 1
         # Count people who have NOT gotten a computer AND waited over n minutes, 1) leave the queue, 2) set wait duration
         # TODO: Make wait time of 60 an adjustable value
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() is True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
-        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() is True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
+        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
         if len(done_waiting) > 0:
             waiting -= len(done_waiting)
         # COLLECT STATS @ END OF EACH HOUR
@@ -314,7 +314,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int= 1):
 def main():
     # days = input("How many days should the simulation run? ")
     days = 2
-    outfile = run_simulation([20, 100, 200], number_of_days=days)
+    outfile = run_simulation([50, 100, 150, 200, 250], number_of_days=days)
     outfile.to_csv('results.csv')
 
 if __name__ == '__main__':

@@ -1,33 +1,32 @@
-# 2020Fall_project
+# Computer use at the public library
 
 Sara Rasmussen (saralr2)  
-IS 594PR 
+IS 597PR FA 2020 
 
-Project proposal:
+## Project proposal
 
 Using a Monte Carlo simulation, I would like to investigate the use of free public computers at a large public library. The closure of public libraries in response to the COVID-19 pandemic cast a bright spotlight on digital inequality in the United States. Since the late 1990s, public libraries have provided computers for the community to use for activities from writing and printing documents, online shopping, completing schoolwork, job seeking and applying for social services. There are many people in the United States without reliable access to either a device or broadband internet, for whom this is an essential service. As libraries plan or begin to reopen, enabling access to the computers is a top priority. 
 
 At the same time, libraries face growing constraints to their budgets and regular calls for accountability and transparency in their spending. Policy-makers often presume that “everyone has a smartphone these days,” rendering such services as free computer terminals unnecessary. There is a real tension between service quality and cost. Libraries must strive to be as cost-effective as possible with their technology investments.   
 
-Striking a balance between these two, I propose a tool to simulate public library computer utilization and determine the optimal number of computers to make available at a library, relative to demand. (1) 
+Striking a balance between these two, I propose a tool to simulate public library computer utilization and determine the optimal number of computers to make available at a library, relative to demand.
 
 I intend to use three datasets, linked below, to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each of its branch location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each branch. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as computers and tablets.
 
 Together, this information can help me determine what the demand for computers might look like by time of day, day of the week, and month of the year. 
 
-Fixed business rules (a work in progress): 
+## Fixed business rules
 - Open hours at the library (10AM-8PM for all days: 10 open hours)
-- Cost per device and annual maintenance cost of the fleet.
-- Computer use policy: Patrons can use a computer for 1 hour. 
-- If there are more people than computers, and a patron has to wait for more than 1 hour to use a computer, they’ll leave.
+- Cost per computer purchased (ignoring bulk pricing)
 
-Variables (also a work in progress):
-- Number of patrons who want to use the computer at a given time/day/month.
-- Number of computers that are out of service at any given moment. 
+## Probabilistic variables
+- Number of computers functioning and available per day
+- Number of patrons per day and distribution of patrons per hour
+- Computer use policy: Patrons can reserve a computer for 15 or 60 minutes
+- Patron willingness to wait for an open computer: If there are more people than computers, each patron has a randomized length of time they are willing to wait
 
-Hypothesis: The more computers you have in one location, the more people will use those computers, but also the higher the overall cost of the service.  
-However, there will be a tipping point where computers would exceed demand, decreasing utilization rates.  
-I am interested in finding the “point of convergence” for the most cost-effective number of computers to maintain.
+## Hypothesis
+The fewer public computers a library offers, the lower the service cost--and quality. The more public computers a library offers, the more sessions patrons will log and the higher the cost of the service, but eventually, the number of computers would exceed demand, decreasing utilization rates. Somewhere along this spectrum, there is an optimal computer “fleet” size for public libraries, which balances service quality and cost.
 
 Cost measures:
 - Device acquisition and maintenance 
@@ -35,10 +34,14 @@ Cost measures:
 
 Service quality measures:
 - Number of people who waited for a computer 
-- How long patrons waited for a computer (min, mean, max) 
+- How long patrons waited for a computer
 - Number of people who departed because the wait was too long
 
-Bibliography:
-Please see my bibliography.md for citations and project data sources.
+## Bibliography
+Please see bibliography.md for citations and project data sources.
 
-(1) Why simulate this, rather than conduct an analysis of historical trends? There is not enough open data available on this topic to do so. The data is patchy, and possibly not even collected, by some libraries. However, I hope the little data available can help enrich this simulation.
+## Requirements
+- python 3.7.3  
+- numpy 1.16.4  
+- matplotlib 3.1.0  
+- pandas 0.24.2  

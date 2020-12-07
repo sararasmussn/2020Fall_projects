@@ -60,7 +60,7 @@ def select_reservation_length() -> int:
     RANDOMIZED VARIABLE
     For one computer reservation, randomly select the reservation length:
     Options for length of use selected by the patrons: 15 or 1 hour.
-    Discrete distribution between two options. Not 50/50. Probably skewed more like 25/75.
+    Discrete distribution between two options. Not 50/50. Probably skewed more like 30/70.
 
     :return: The length of time
     >>> results = Counter()
@@ -81,6 +81,17 @@ def select_reservation_length() -> int:
     return patron_dist[0]
 
 
+def set_wait_length() -> int:
+    """
+    RANDOMIZED VARIABLE
+    How long patrons are willing to wait -- randomly assigned, between 15 and 90 minutes.
+
+    :return:
+    """
+    wait = random.uniform(15, 90)
+    return int(wait)
+
+
 def set_total_patrons_count(samples: int = 1) -> int:
     """
     Set the total number of patrons for 1 day.
@@ -88,7 +99,7 @@ def set_total_patrons_count(samples: int = 1) -> int:
 
 
     :samples: Number of times to run the simulation, used for testing the distribution.
-    :return: RANDOMIZED variable, based on Chicago Public Library data.
+    :return: RANDOMIZED VARIABLE, based on Chicago Public Library data.
     >>> results = []
     >>> for test in range(5):
     ...     results.append(set_total_patrons_count(samples=10000))  # Testing mode
@@ -102,7 +113,7 @@ def set_total_patrons_count(samples: int = 1) -> int:
     # In fact, CPL data shows that usage decreased for the last 3 years, specifically by 13.5% from 2018 to 2019.
     low_service = (514 * .865)      # I've intentionally lowered the low end by 13.5%.
     # But it's also likely that due to the economic crisis, usage will go up (Jaeger et al., 2011).
-    peak_service = random.uniform(622, 949)     # 949 was the highest number in 2016
+    peak_service = random.uniform(622, 949)     # Uniform distribution within this range. 949 was the highest number in 2016.
     # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_07/Probability_Distributions.ipynb & https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.beta.html
     g = np.random.default_rng()
     patron_pct = np.random.Generator.beta(g, low_service, peak_service, samples)
@@ -235,16 +246,17 @@ def run_one_day(fleet: int) -> pd.DataFrame:
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they got a computer
                 patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patron_df['Got_computer_minute'] - patron_df['Arrival_minute'])
         # UPDATE QUEUE LEAVERS
-        # Free up computer when patron reaches 1 hour
+        # Free up computer when patron reaches end of reservation length
         session_end = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == now
-        se = session_end['Leave_minute'].tolist()      # Turn that into a list, and see if it's been 60 minutes (handles multiple patrons at 1 minute)
+        se = session_end['Leave_minute'].tolist()      # Turn that into a list, and see if it's been their reservation length (handles multiple patrons at 1 minute)
         if len(se) > 0 and minute == se[0]:
             computers_in_use -= 1
-        # Count people who have NOT gotten a computer AND waited over n minutes, 1) leave the queue, 2) set wait duration
+        # Count people who have NOT gotten a computer AND waited over set_wait_length() minutes, 1) leave the queue, 2) set wait duration
         # TODO: Make wait time of 60 an adjustable value
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Departed_queue']] = 1
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - 60), ['Wait_duration']] = 60
-        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - 60)].tolist()
+        wait_length = set_wait_length()
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Departed_queue']] = 1
+        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Wait_duration']] = wait_length
+        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - wait_length)].tolist()
         if len(done_waiting) > 0:
             waiting -= len(done_waiting)
         # COLLECT STATS @ END OF EACH HOUR
@@ -323,6 +335,10 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1):
 
 
 def main():
+    """
+    Main function
+    :return: Nothing
+    """
     # days = input("How many days should the simulation run? ")
     days = 200
     outfile = run_simulation([75, 150, 225, 300], number_of_days=days)

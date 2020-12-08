@@ -78,13 +78,13 @@ def select_reservation_length() -> int:
     """
     choices = [15, 60]
     skew = [30, 70]
-    patron_dist = random.choices(choices, weights=skew, k=1)
-    return patron_dist[0]
+    reservation = random.choices(choices, weights=skew, k=1)
+    return reservation[0]
 
 
 def set_wait_length() -> int:
     """
-    RANDOMIZED VARIABLE
+    RANDOMIZED VARIABLE (Uniform distribution)
     How long patrons are willing to wait -- randomly assigned, between 15 and 90 minutes.
 
     :return:
@@ -187,7 +187,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
     - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
     - How many patrons left the queue because the wait was longer than wait_length()?     (n columns with dtype int)
-    >>> df = run_one_day(50)
+    >>> df = run_one_day(15)
     >>> df.shape
     (1, 26)
     """
@@ -265,73 +265,89 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             utilization = computers_in_use/computers_available
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
-            daily_results["utilization " + str(n)] = utilization
-            daily_results["num_waiting " + str(n)] = abs(waiting) # Prevent negative numbers
+            daily_results["Utilization " + str(n)] = utilization
+            daily_results["Patrons_waiting " + str(n)] = waiting
             n += 1
-    daily_results['Departed wait queue'] = patron_df['Departed_queue'].sum()
+    daily_results['Departed wait queue'] = int(patron_df['Departed_queue'].sum())
     daily_results['min wait duration'] = patron_df['Wait_duration'].min()
     daily_results['median wait duration'] = patron_df['Wait_duration'].median()
     daily_results['max wait duration'] = patron_df['Wait_duration'].max()
+    # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
+    daily_results['Repair cost'] = (fleet - daily_results['Computers available']) * 95
+    # TODO: Handle the occurrence of patrons arriving at the end of the day to be assigned a computer before they arrive.
+    # Replacing negative values with zeroes is not an ideal solution, but it will do for now.
+    daily_results = daily_results.replace(list(np.arange(-100, -1)), 0)
+    daily_results = daily_results.sort_index(axis=1)
     return daily_results
 
 
 def run_simulation(inventory_qtys: list, number_of_days: int = 1):
     """
     Run as many days of simulation run_one_day() as specified.
-    Generates a DataFrame shaped (number_of_days rows, 30 cols) with:
+    Generates a DataFrame shaped (number_of_days rows, x cols) with:
         26 cols returned by run_one_day()
-        Inventory_qty: Int
+    1 row = 1 day; after each day, concat
+
+
+    Financials DataFrame (number_of_days, rows, 4 columns)
+    Inventory_qty: Int
         Acquisition_cost: Int
         Repair_cost: Int
         Total_cost: Int
-    1 row = 1 day; after each day, concat
 
     :param number_of_days: Number of times the simulation should be run for each inventory_qty.
     :param inventory_qtys: Devices qtys to simulate.
     :return: Answers to these questions:
-    - COST_DIST: What was the min/median/max total cost of the service provided?
-        (# devices * price of device) + (max(# devices unavailable) * repair fee)
+    - Financials: What was the upfront cost of devices and median cost of repairs?
+
+
     - UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
     - WAIT_DURATION_DIST: What was the min/median/max wait time for patrons to get a computer, for all sims run?
     - NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
     - LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
     From this, the user can discern: How many computers should we buy in the next ITAD (IT asset disposition) cycle?
     """
-    sim_results = pd.DataFrame()
     print("Running simulation of", number_of_days, "days...\n")
-    # Run the simulation once for each device count
     sims = []
+
+    # Source: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.append.html & https://maneeshasane.com/programming/2020/09/pandas-cheat-sheet.html
+    financials = pd.concat([pd.DataFrame([i], columns=['Inventory qty']) for i in inventory_qtys], ignore_index=True)
+    financials['Acquisition cost'] = financials['Inventory qty'].apply(lambda x: x * 375)   # Your average Chromebook price; Acquisition is a fixed cost based on the number of devices in inventory
+
     for number_of_devices in inventory_qtys:
-        # Acquisition is a fixed cost based on the number of devices in inventory
-        acquisition_cost = (number_of_devices * 375)    # Your average Chromebook price
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation
             single_simulation = run_one_day(number_of_devices)
-            # Determine costs for n simulations run
             single_simulation['Inventory qty'] = number_of_devices
-            single_simulation.loc[lambda x: x['Inventory qty'] == number_of_devices, ['Acquisition cost']] = acquisition_cost
-            # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
-            single_simulation['Repair cost'] = (number_of_devices - single_simulation['Computers available']) * 95
-            single_simulation['Total cost'] = acquisition_cost + single_simulation['Repair cost']
-            sims.append(single_simulation)
-        sim_results = pd.concat(sims, ignore_index=True)
+            sims.append(single_simulation) # List of all simulation dfs
+    sim_results = pd.concat(sims, ignore_index=True)    # sim_results is the master DataFrame from which aggregate stats can be derived
 
-    # TODO: Finalize output formatting
-    # For qty in inventory_qtys, print the qty devices
-    # - BY DAY: COST_DIST: What was the min/median/max costs of the service provided?
+    # Determine financial summary
+    repairs = sim_results[['Inventory qty', 'Repair cost']]
+    median_repair_cost = repairs.groupby('Inventory qty').agg([np.median])
+    financials = pd.merge(financials, median_repair_cost, on=['Inventory qty'], how="inner")
+    # Source: https://stackoverflow.com/questions/43290051/renaming-tuple-column-name-in-dataframe
+    financials = financials.rename(columns={financials.columns[-1]: "Median repair cost"})
+    financials['Total cost'] = financials['Acquisition cost'] + financials['Median repair cost']
+
+    # TODO: Finalize output formatting.
     # - BY HOUR: UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
-    # - BY HOUR: NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
+
+    # - BY DAY: NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
     # - BY DAY: LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
+
+
     # Cost format: ${:,.2f}
     # Percent format: {:2.2%}
     # Big number format: {:,}
 
-    mins = sim_results.groupby('Inventory qty').agg([np.min])
-    meds = sim_results.groupby('Inventory qty').agg([np.median])
-    maxes = sim_results.groupby('Inventory qty').agg([np.max])
-    #descriptive_stats = pd.concat([mins, meds, maxes])      # TODO: This also does not work as expected. Better to return separate dfs?
-    return mins, meds, maxes    # Shape (# inventory counts, 87)
+    # mins = sim_results.groupby('Inventory qty').agg([np.min])
+    # meds = sim_results.groupby('Inventory qty').agg([np.median])
+    # maxes = sim_results.groupby('Inventory qty').agg([np.max])
+    # #descriptive_stats = pd.concat([mins, meds, maxes])      # TODO: This also does not work as expected. Better to return separate dfs?
+    # return mins, meds, maxes    # Shape (# inventory counts, 87)
+    return financials
 
 
 def main():
@@ -340,11 +356,13 @@ def main():
     :return: Nothing
     """
     # days = input("How many days should the simulation run? ")
-    days = 1460                          # 1 year=365; 4 years=1,460
-    outfile_min, outfile_med, outfile_max = run_simulation([75, 150, 225, 300], number_of_days=days)
-    outfile_min.to_csv('min.csv')
-    outfile_med.to_csv('median.csv')
-    outfile_max.to_csv('max.csv')
+    days = 3        # 1 year=365; 4 years=1,460
+    fins = run_simulation([225], number_of_days=days)
+    print(fins)
+    # outfile_min, outfile_med, outfile_max = run_simulation([75, 150, 225, 300], number_of_days=days)
+    # outfile_min.to_csv('min.csv')
+    # outfile_med.to_csv('median.csv')
+    # outfile_max.to_csv('max.csv')
 
 
 if __name__ == '__main__':

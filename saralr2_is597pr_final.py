@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import Counter
+import datetime
 
 
 def calculate_pert(low, likely, high, weight=4) -> float:
@@ -34,16 +35,13 @@ def determine_fleet_availability(total_inventory: int) -> int:
     """
     RANDOMIZED VARIABLE: Given the number of computers in your fleet, calculate out-of-service count, return the number of computers in service today.
     Uses a PERT distribution.
-    ---
     "Mean time between failures (MTBF) is the predicted elapsed time between inherent failures of a mechanical or electronic system, during normal system operation.
     MTBF can be calculated as the arithmetic mean (average) time between failures of a system." (Source: Wikipedia)
     Average laptop failure rate after 2 years = 19%; after 3 years = 31% (Source: Sands and Tseng)
-    - For each machine, there is some probability of failure
-    - For each day, count the number of machines failed
 
     :total_inventory: The number of computers in your inventory. Must be an int.
     :Weight: Default value is 4; the amount of likelihood that the middle point will be true.
-    :return: The number of computers available to be used today. Must be an int.
+    :return: The number (int) of computers available to be used today
     >>> determine_fleet_availability(153)
     145
     """
@@ -84,10 +82,9 @@ def select_reservation_length() -> int:
 
 def set_wait_length() -> int:
     """
-    RANDOMIZED VARIABLE (Uniform distribution)
-    How long patrons are willing to wait -- randomly assigned, between 15 and 90 minutes.
+    RANDOMIZED VARIABLE (Uniform distribution) of how long patrons are willing to wait.
 
-    :return:
+    :return: Int between 15 and 90
     """
     wait = random.uniform(15, 90)
     return int(wait)
@@ -96,15 +93,13 @@ def set_wait_length() -> int:
 def set_total_patrons_count(samples: int = 1) -> int:
     """
     Set the total number of patrons for 1 day.
-    Uses a beta distribution.
-
+    RANDOMIZED VARIABLE, based on Chicago Public Library data. Uses a beta distribution.
 
     :samples: Number of times to run the simulation, used for testing the distribution.
-    :return: RANDOMIZED VARIABLE, based on Chicago Public Library data.
+    :return: An int between 444 and 821
     >>> results = []
     >>> for test in range(5):
     ...     results.append(set_total_patrons_count(samples=10000))  # Testing mode
-    >>> print(results)
     >>> min(results) >= 444
     True
     >>> max(results) <= 949
@@ -114,23 +109,22 @@ def set_total_patrons_count(samples: int = 1) -> int:
     # In fact, CPL data shows that usage decreased for the last 3 years, specifically by 13.5% from 2018 to 2019.
     low_service = (514 * .865)      # I've intentionally lowered the low end by 13.5%.
     # But it's also likely that due to the economic crisis, usage will go up (Jaeger et al., 2011).
-    peak_service = calculate_pert(622, 700, 949, 6)
-    peak_service = random.uniform(622, 949)     # Uniform distribution within this range. 949 was the highest number in 2016.
+    peak_service = random.triangular((622 * .865), (949 * .865), (622))     # Triangular distribution, giving more weight to probability of lower numbers; 949 was the peak in 2016.
     # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_07/Probability_Distributions.ipynb & https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.beta.html
     g = np.random.default_rng()
     patron_pct = np.random.Generator.beta(g, low_service, peak_service, samples)
     if samples > 1:
         # Testing my distribution: Does it look like the CPL data?
-        patron_array = (low_service * patron_pct) + low_service
+        patron_array = ((peak_service - low_service) * patron_pct) + low_service
         plt.hist(patron_array, bins=200, density=True)
         plt.show()
-    patron_count = (low_service * patron_pct[0]) + low_service
+    patron_count = ((peak_service - low_service) * patron_pct[0]) + low_service
     return int(patron_count)
 
 
 def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     """
-    #use these as weights, for each person coming that day, which minute did they arrive? Draw one random # representing the minute, for each person.
+    Draw one random # representing the minute, for each person.
     Discrete probability distribution of patrons being added, based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
@@ -176,12 +170,13 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     return patron_dist
 
 
-def run_one_day(fleet: int) -> pd.DataFrame:
+def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
     """
     Simulate one day at the library.
     MC sim requirement: Return all data, so that it can be analyzed in aggregate.
 
     :param fleet: number_of_devices in the IT fleet
+    :param hours_open: number of hours open per day; 10 by default
     :return: Return Dataframe shaped (1,26) with answers to the following questions: (n=hours_open)
     - How many computers were in service today?                             (dtype int)
     - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
@@ -191,8 +186,6 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     >>> df.shape
     (1, 26)
     """
-    hours_open = 10
-
     # Determine total number of computers and patrons today
     computers_available = determine_fleet_availability(fleet)
     total_patrons_today = set_total_patrons_count()
@@ -223,7 +216,7 @@ def run_one_day(fleet: int) -> pd.DataFrame:
             comps_free = computers_available - computers_in_use
             # Return a series or int w/ min(arrival minute) where got_computer_minute is null
             oldest_arrive_min = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Departed_queue'].isnull() == True)].min()
-            # TODO: Note when 2+ patrons arrive in same minute, this will update everyone with a computer, even if only 1 computer is available
+            # TODO: Handle when 2+ patrons arrive in same minute; currently it will update everyone with a computer, even if only 1 computer is available.
             # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
             patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
             patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
@@ -281,88 +274,79 @@ def run_one_day(fleet: int) -> pd.DataFrame:
     return daily_results
 
 
-def run_simulation(inventory_qtys: list, number_of_days: int = 1):
+def run_simulation(inventory_qtys: list, number_of_days: int = 1) -> list:
     """
     Run as many days of simulation run_one_day() as specified.
-    Generates a DataFrame shaped (number_of_days rows, x cols) with:
-        26 cols returned by run_one_day()
-    1 row = 1 day; after each day, concat
-
-
-    Financials DataFrame (number_of_days, rows, 4 columns)
-    Inventory_qty: Int
-        Acquisition_cost: Int
-        Repair_cost: Int
-        Total_cost: Int
 
     :param number_of_days: Number of times the simulation should be run for each inventory_qty.
     :param inventory_qtys: Devices qtys to simulate.
-    :return: Answers to these questions:
-    - Financials: What was the upfront cost of devices and median cost of repairs?
+    :return: A list of dataframes with answers to these questions:
+    - DETAILED: Full output, useful if you were planning to load the data into Tableau for detailed analysis and visualizations.
+    - FINANCIALS: What was the upfront cost of devices and median cost of repairs?
+    - WAIT_DURATIONS: What was the min/median/max wait time for patrons to get a computer, for all sims run?
+    - DEPARTURES: What was the min/median/max # of patrons who left because they waited longer than n minutes, grouped by inventory_qty?
+    - PATRONS_WAITING: What was the max # of patrons waiting to get a computer, grouped by inventory_qty?
+    - UTILIZATION: What was the min/median/max utilization rate per hour, grouped by inventory_qty?
 
-
-    - UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
-    - WAIT_DURATION_DIST: What was the min/median/max wait time for patrons to get a computer, for all sims run?
-    - NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
-    - LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
     From this, the user can discern: How many computers should we buy in the next ITAD (IT asset disposition) cycle?
     """
+    hours_open = 10
     print("Running simulation of", number_of_days, "days...\n")
     sims = []
-
     # Source: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.append.html & https://maneeshasane.com/programming/2020/09/pandas-cheat-sheet.html
     financials = pd.concat([pd.DataFrame([i], columns=['Inventory qty']) for i in inventory_qtys], ignore_index=True)
-    financials['Acquisition cost'] = financials['Inventory qty'].apply(lambda x: x * 375)   # Your average Chromebook price; Acquisition is a fixed cost based on the number of devices in inventory
-
+    # 375 = Your average Chromebook price; Acquisition is a fixed cost based on the number of devices in inventory; Ignore bulk pricing models
+    financials['Acquisition cost'] = financials['Inventory qty'].apply(lambda x: x * 375)
     for number_of_devices in inventory_qtys:
+        print(datetime.datetime.now(), ": Simulating", number_of_devices, " qty...")
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation
             single_simulation = run_one_day(number_of_devices)
             single_simulation['Inventory qty'] = number_of_devices
-            sims.append(single_simulation) # List of all simulation dfs
-    sim_results = pd.concat(sims, ignore_index=True)    # sim_results is the master DataFrame from which aggregate stats can be derived
-
-    # Determine financial summary
-    repairs = sim_results[['Inventory qty', 'Repair cost']]
+            sims.append(single_simulation)  # List of all simulation dfs
+    detailed = pd.concat(sims, ignore_index=True)    # detailed is the master DataFrame from which aggregate stats can be derived
+    repairs = detailed[['Inventory qty', 'Repair cost']]
     median_repair_cost = repairs.groupby('Inventory qty').agg([np.median])
-    financials = pd.merge(financials, median_repair_cost, on=['Inventory qty'], how="inner")
+    # TODO: Receiving the following error message on this join, but in debugger, right df variable shows as a 1-level MultiIndex.
+    # UserWarning: merging between different levels can give an unintended result (1 levels on the left, 2 on the right)
+    financials = pd.merge(financials, median_repair_cost, left_on=['Inventory qty'], right_index=True, how="inner")
     # Source: https://stackoverflow.com/questions/43290051/renaming-tuple-column-name-in-dataframe
     financials = financials.rename(columns={financials.columns[-1]: "Median repair cost"})
     financials['Total cost'] = financials['Acquisition cost'] + financials['Median repair cost']
-
-    # TODO: Finalize output formatting.
-    # - BY HOUR: UTIL_DIST: What was the min/median/max utilization rate, for all simulations run?
-
-    # - BY DAY: NUM_WAIT_DIST: What was the min/median/max # of patrons waiting to get a computer, for all sims run?
-    # - BY DAY: LEAVE_DIST: What was the min/median/max # of people who left because they waited longer than n minutes, for all sims run?
-
-
-    # Cost format: ${:,.2f}
-    # Percent format: {:2.2%}
-    # Big number format: {:,}
-
-    # mins = sim_results.groupby('Inventory qty').agg([np.min])
-    # meds = sim_results.groupby('Inventory qty').agg([np.median])
-    # maxes = sim_results.groupby('Inventory qty').agg([np.max])
-    # #descriptive_stats = pd.concat([mins, meds, maxes])      # TODO: This also does not work as expected. Better to return separate dfs?
-    # return mins, meds, maxes    # Shape (# inventory counts, 87)
-    return financials
+    financials = financials.set_index('Inventory qty')
+    detailed = detailed.drop(columns=['Repair cost'])
+    wait_durations = detailed[['Inventory qty', 'min wait duration', 'median wait duration', 'max wait duration']]
+    wait_durations = wait_durations.groupby('Inventory qty').agg([np.median])
+    departures = detailed[['Inventory qty', 'Patrons today', 'Departed wait queue']]
+    departures = departures.groupby('Inventory qty').agg([np.min, np.median, np.max])
+    utils = [detailed[['Inventory qty']]]
+    pats = [detailed[['Inventory qty']]]
+    for hour in range(hours_open):
+        utils.append(detailed['Utilization ' + str(hour+1)])
+        pats.append(detailed['Patrons_waiting ' + str(hour+1)])
+    utilization = pd.concat(utils, axis=1)
+    utilization = utilization.groupby('Inventory qty').agg([np.min, np.median, np.max])
+    patrons_waiting = pd.concat(pats, axis=1).groupby('Inventory qty').agg([np.max])
+    return [detailed, financials, wait_durations, departures, patrons_waiting, utilization]
 
 
 def main():
     """
-    Output results to CSV files
-    :return: Nothing
+    Requests user input for # days to simulate. Outputs results to CSV files.
+    :return: None
     """
-    # days = input("How many days should the simulation run? ")
-    days = 3        # 1 year=365; 4 years=1,460
-    fins = run_simulation([225], number_of_days=days)
-    print(fins)
-    # outfile_min, outfile_med, outfile_max = run_simulation([75, 150, 225, 300], number_of_days=days)
-    # outfile_min.to_csv('min.csv')
-    # outfile_med.to_csv('median.csv')
-    # outfile_max.to_csv('max.csv')
+    try:
+        days = int(input("How many days should the simulation run? "))      # 1 year=365; 4 years=1,460
+        results = run_simulation([75, 150, 225, 300, 375], number_of_days=days)            # [75, 150, 225, 300, 375]
+        folder = 'sample_output/'
+        filenames = ['detailed_output.csv', 'financial_overview.csv', 'wait_durations_in_minutes.csv',
+                     'patron_departures.csv', 'max_patrons_waiting_by_hour.csv', 'utilization_by_hour.csv']
+        # Source: https://realpython.com/python-zip-function/#traversing-lists-in-parallel
+        for df, output in zip(results, filenames):
+            df.to_csv(folder + output)
+    except ValueError:
+        print("Please enter an integer. ")
 
 
 if __name__ == '__main__':

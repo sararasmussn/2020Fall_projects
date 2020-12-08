@@ -11,9 +11,8 @@
 - Weible, John. "From Project Management to MC Simulations." June 16, 2020. https://mediaspace.illinois.edu/media/t/1_lawwsyso.
 - Wikipedia. "Mean time between failures." https://en.wikipedia.org/wiki/Mean_time_between_failures.
 
-## Data Sources
+## Data sources
 
 - https://data.cityofchicago.org/browse?q=library%20computer&sortBy=relevance
 - https://data.cityofchicago.org/Education/Connect-Chicago-Locations/bmus-hp7e/data
 - https://data.seattle.gov/Community/Checkouts-By-Title-Physical-Items-/5src-czff/data
-

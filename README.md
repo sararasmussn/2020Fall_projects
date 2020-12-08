@@ -3,7 +3,7 @@
 Sara Rasmussen (saralr2)  
 IS 597PR FA 2020 
 
-## Project proposal
+## Project summary
 
 Using a Monte Carlo simulation, I would like to investigate the use of free public computers at a large public library. The closure of public libraries in response to the COVID-19 pandemic cast a bright spotlight on digital inequality in the United States. Since the late 1990s, public libraries have provided computers for the community to use for activities from writing and printing documents, online shopping, completing schoolwork, job seeking and applying for social services. There are many people in the United States without reliable access to either a device or broadband internet, for whom this is an essential service. As libraries plan or begin to reopen, enabling access to the computers is a top priority. 
 

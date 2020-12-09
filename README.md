@@ -32,9 +32,9 @@ Cost measures:
 - Device utilization rates
 
 Service quality measures:
-- Number of people who waited for a computer 
+- Number of patrons who waited for a computer 
 - How long patrons waited for a computer
-- Number of people who departed because the wait was too long
+- Number of patrons who departed because the wait was too long
 
 ## Findings
 Please see sample_output/ for examples of the program's output. 

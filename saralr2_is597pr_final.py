@@ -124,24 +124,34 @@ def set_total_patrons_count(samples: int = 1) -> int:
 
 def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     """
-    Draw one random # representing the minute, for each person.
-    Discrete probability distribution of patrons being added, based on Seattle Public Library data.
+    Draw one random # representing the minute arrived, for each person.
+    Discrete probability distribution of patrons showing up throughout the day, based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
     :param total_patrons: Int yielded from set_total_patrons_count()
     :param plot: Optional, prints 10 plots to review the distribution of patrons
     :return: Returns a list of all hours that patrons arrived
-    >>> patrons_per_minute(700)
-    [1,2,3]
-    >>> for z in range(10):
-    ...     patrons_per_minute(700, plot=True)
-    [1,2,3]
+    >>> test1 = patrons_per_minute(550, plot=True)  # X-axis = Minute arrived
+    >>> len(test1)      # Confirm total number of patrons that day
+    550
+    >>> counter = []
+    >>> for p in range(100):      # Verify that 20% or fewer arrivals are before minute 240
+    ...     test2 = patrons_per_minute(450)
+    ...     early = 0
+    ...     for minute in test2:
+    ...         if minute < 180:
+    ...             early +=1
+    ...     counter.append(early/len(test2))
+    >>> counter.sort()
+    >>> for c in counter: c <= 0.20      # doctest: +ELLIPSIS
+    True
+    ...
+    True
     """
-    # Determine RANDOMLY, WITH WEIGHTS, what minute each patron arrived at.
     minutes = np.arange(600)
     probs = []
     for i in range(600):
-        if i < 60:
+        if i < 60:      # Hour 1
             probs.append(0.035010)
         elif i < 120:
             probs.append(0.045726)
@@ -149,7 +159,7 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
             probs.append(0.055542)
         elif i < 240:
             probs.append(0.136442)
-        elif i < 300:
+        elif i < 300:   # Hour 5
             probs.append(0.165399)
         elif i < 360:
             probs.append(0.223067)
@@ -159,7 +169,7 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
             probs.append(0.088998)
         elif i < 540:
             probs.append(0.047607)
-        elif i < 600:
+        elif i < 600:   # Hour 10
             probs.append(0.002781)
     patron_dist = random.choices(minutes, weights=probs, k=total_patrons)
     if plot is True:
@@ -216,7 +226,7 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
             comps_free = computers_available - computers_in_use
             # Return a series or int w/ min(arrival minute) where got_computer_minute is null
             oldest_arrive_min = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Departed_queue'].isnull() == True)].min()
-            # TODO: Handle when 2+ patrons arrive in same minute; currently it will update everyone with a computer, even if only 1 computer is available.
+            # TODO: Handle when 2+ patrons arrive in same minute; currently it will update everyone with a computer, even if only 1 computer is available. Is this causing utilization over 100%?
             # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
             patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
             patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
@@ -298,7 +308,7 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1) -> list:
     # 375 = Your average Chromebook price; Acquisition is a fixed cost based on the number of devices in inventory; Ignore bulk pricing models
     financials['Acquisition cost'] = financials['Inventory qty'].apply(lambda x: x * 375)
     for number_of_devices in inventory_qtys:
-        print(datetime.datetime.now(), ": Simulating", number_of_devices, " qty...")
+        print(datetime.datetime.now(), ": Simulating", number_of_devices, "qty...")
         # Run the simulation the specified # times
         for days in range(number_of_days):
             # Call the single simulation

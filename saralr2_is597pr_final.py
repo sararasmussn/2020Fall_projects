@@ -184,17 +184,21 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
     """
     Simulate one day at the library.
     MC sim requirement: Return all data, so that it can be analyzed in aggregate.
+    # Source: https://pymotw.com/2/doctest/
 
     :param fleet: number_of_devices in the IT fleet
     :param hours_open: number of hours open per day; 10 by default
-    :return: Return Dataframe shaped (1,26) with answers to the following questions: (n=hours_open)
+    :return: Return Dataframe shaped (1,27) with answers to the following questions: (n=hours_open)
     - How many computers were in service today?                             (dtype int)
     - What was the utilization per hour? (# computers used / # available)   (n columns with dtype float)
     - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
     - How many patrons left the queue because the wait was longer than wait_length()?     (n columns with dtype int)
-    >>> df = run_one_day(15)
-    >>> df.shape
-    (1, 26)
+    - What was the repair cost for the day?                                 (dtype int)
+    >>> run_one_day(150)     # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    Computers available...min wait duration
+    ...
+    <BLANKLINE>
+    [1 rows x 27 columns]
     """
     # Determine total number of computers and patrons today
     computers_available = determine_fleet_availability(fleet)
@@ -204,33 +208,32 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
     wait_count_by_hour = []
     utilization_by_hour = []
     waiting = 0
-    n = 1
+    hour = 1
 
     # For each of the patrons today, distribute the patrons' arrival minutes
     ppm = patrons_per_minute(total_patrons_today)
-
-    patron_df = pd.DataFrame(ppm, columns=['Arrival_minute'])
-    patron_df = patron_df.sort_values(['Arrival_minute'])
-    patron_df['Got_computer_minute'] = np.nan
-    patron_df['Leave_minute'] = np.nan
-    patron_df['Wait_duration'] = np.nan
-    patron_df['Departed_queue'] = np.nan
+    # Collect by-patron data
+    patrons_df = pd.DataFrame(ppm, columns=['Arrival_minute'])
+    patrons_df = patrons_df.sort_values(['Arrival_minute'])
+    patrons_df['Got_computer_minute'] = np.nan
+    patrons_df['Leave_minute'] = np.nan
+    patrons_df['Wait_duration'] = np.nan
+    patrons_df['Departed_queue'] = np.nan
 
     # COUNT # PATRONS ARRIVED @ A PARTICULAR MINUTE
-    counts = patron_df['Arrival_minute'].value_counts()
-    # For each new minute...
+    counts = patrons_df['Arrival_minute'].value_counts()
     computers_in_use = 0
     for minute in range(hours_open * 60):
         # UPDATE COMPUTER USAGE
+        # Before assigning new patrons to a computer, assign patrons who are waiting
         while waiting > 0 and (computers_in_use < computers_available):
             comps_free = computers_available - computers_in_use
             # Return a series or int w/ min(arrival minute) where got_computer_minute is null
-            oldest_arrive_min = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Departed_queue'].isnull() == True)].min()
-            # TODO: Handle when 2+ patrons arrive in same minute; currently it will update everyone with a computer, even if only 1 computer is available. Is this causing utilization over 100%?
+            oldest_arrive_min = patrons_df['Arrival_minute'][(patrons_df['Got_computer_minute'].isnull() == True) & (patrons_df['Departed_queue'].isnull() == True)].min()
             # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
-            patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
-            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
-            patron_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patron_df['Arrival_minute']
+            patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
+            patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
+            patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patrons_df['Arrival_minute']
             waiting -= comps_free
             computers_in_use += comps_free
         # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
@@ -247,20 +250,20 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                 computers_in_use += patrons_this_minute
                 # Find and update ONLY df rows where "Arrival_minute" = minute
                 # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they got a computer
-                patron_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patron_df['Got_computer_minute'] - patron_df['Arrival_minute'])
+                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
+                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they got a computer
+                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patrons_df['Got_computer_minute'] - patrons_df['Arrival_minute'])
         # UPDATE QUEUE LEAVERS
         # Free up computer when patron reaches end of reservation length
-        session_end = patron_df[patron_df['Leave_minute'] == minute]   # Return df where Leave_minute == now
+        session_end = patrons_df[patrons_df['Leave_minute'] == minute]   # Return df where Leave_minute == now
         se = session_end['Leave_minute'].tolist()      # Turn that into a list, and see if it's been their reservation length (handles multiple patrons at 1 minute)
         if len(se) > 0 and minute == se[0]:
             computers_in_use -= 1
         # Count people who have NOT gotten a computer AND waited over set_wait_length() minutes, 1) leave the queue, 2) set wait duration
         wait_length = set_wait_length()
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Departed_queue']] = 1
-        patron_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Wait_duration']] = wait_length
-        done_waiting = patron_df['Arrival_minute'][(patron_df['Got_computer_minute'].isnull() == True) & (patron_df['Arrival_minute'] == minute - wait_length)].tolist()
+        patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Departed_queue']] = 1
+        patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Wait_duration']] = wait_length
+        done_waiting = patrons_df['Arrival_minute'][(patrons_df['Got_computer_minute'].isnull() == True) & (patrons_df['Arrival_minute'] == minute - wait_length)].tolist()
         if len(done_waiting) > 0:
             waiting -= len(done_waiting)
         # COLLECT STATS @ END OF EACH HOUR
@@ -268,16 +271,17 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
             utilization = computers_in_use/computers_available
             utilization_by_hour.append(utilization)
             wait_count_by_hour.append(waiting)
-            daily_results["Utilization " + str(n)] = utilization
-            daily_results["Patrons_waiting " + str(n)] = waiting
-            n += 1
-    daily_results['Departed wait queue'] = int(patron_df['Departed_queue'].sum())
-    daily_results['min wait duration'] = patron_df['Wait_duration'].min()
-    daily_results['median wait duration'] = patron_df['Wait_duration'].median()
-    daily_results['max wait duration'] = patron_df['Wait_duration'].max()
+            daily_results["Utilization " + str(hour)] = utilization
+            daily_results["Patrons_waiting " + str(hour)] = waiting
+            hour += 1
+
+    # UPDATE DAILY RESULTS
+    daily_results['Departed wait queue'] = int(patrons_df['Departed_queue'].sum())
+    daily_results['min wait duration'] = patrons_df['Wait_duration'].min()
+    daily_results['median wait duration'] = patrons_df['Wait_duration'].median()
+    daily_results['max wait duration'] = patrons_df['Wait_duration'].max()
     # Repair fee: $95 (2 hours to collect, re-image, return a computer * median(DOIS help desk tech $40-55/hr wage)) (Source: Chicago Data Portal)
     daily_results['Repair cost'] = (fleet - daily_results['Computers available']) * 95
-    # TODO: Handle the occurrence of patrons arriving at the end of the day to be assigned a computer before they arrive.
     # Replacing negative values with zeroes is not an ideal solution, but it will do for now.
     daily_results = daily_results.replace(list(np.arange(-100, -1)), 0)
     daily_results = daily_results.sort_index(axis=1)

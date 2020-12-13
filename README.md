@@ -13,6 +13,8 @@ Striking a balance between these two, this project simulates public library comp
 
 I use open data from Chicago Public Library and Seattle Public Library to help determine the business rules and inform the probability distributions for my simulation. One, from Chicago Public Library, provides the number of computer sessions at each of its branch location by month, for the last few years. Another, from the City of Chicago, provides the number of computers currently at each branch. Lastly, Seattle Public Library provides a history table of materials checked out, with their timestamp, across all locations. This table includes devices such as laptops and tablets.
 
+Voted "Best Analysis" and "Most Enthusiastic Presentation" by my peers. Thanks, everyone!
+
 ## Fixed business rules
 - Simulation scale: n days at one library branch
 - Library operating hours 

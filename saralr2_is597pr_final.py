@@ -321,10 +321,9 @@ def run_simulation(inventory_qtys: list, number_of_days: int = 1) -> list:
             sims.append(single_simulation)  # List of all simulation dfs
     detailed = pd.concat(sims, ignore_index=True)    # detailed is the master DataFrame from which aggregate stats can be derived
     repairs = detailed[['Inventory qty', 'Repair cost']]
-    median_repair_cost = repairs.groupby('Inventory qty').agg([np.median])
-    # TODO: Receiving the following error message on this join, but in debugger, right df variable shows as a 1-level MultiIndex.
-    # UserWarning: merging between different levels can give an unintended result (1 levels on the left, 2 on the right)
-    financials = pd.merge(financials, median_repair_cost, left_on=['Inventory qty'], right_index=True, how="inner")
+    # Source: https://stackoverflow.com/questions/46306786/flatten-multi-index-pandas-dataframe-where-column-names-become-values/46306841
+    repairs = repairs.groupby('Inventory qty').agg([np.median]).stack().reset_index()
+    financials = pd.concat([financials, repairs['Repair cost']], axis=1)
     # Source: https://stackoverflow.com/questions/43290051/renaming-tuple-column-name-in-dataframe
     financials = financials.rename(columns={financials.columns[-1]: "Median repair cost"})
     financials['Total cost'] = financials['Acquisition cost'] + financials['Median repair cost']

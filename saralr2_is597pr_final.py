@@ -129,23 +129,38 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
     :param total_patrons: Int yielded from set_total_patrons_count()
-    :param plot: Optional, prints 10 plots to review the distribution of patrons
+    :param plot: Optional, prints a histogram to review the distribution of patrons
     :return: Returns a list of all hours that patrons arrived
-    >>> test1 = patrons_per_minute(550, plot=True)  # X-axis = Minute arrived
+    >>> test1 = patrons_per_minute(450, plot=True)  # X-axis = Minute arrived
     >>> len(test1)      # Confirm total number of patrons that day
-    550
-    >>> counter = []
-    >>> for p in range(100):      # Verify that 20% or fewer arrivals are before minute 240
-    ...     test2 = patrons_per_minute(450)
+    450
+    >>> arrivals = []
+    >>> patrons_within_1_minute = []
+    >>> for p in range(100):
+    ...     test2 = patrons_per_minute(550)
+    ...     count_minutes = Counter()
     ...     early = 0
     ...     for minute in test2:
+    ...         count_minutes[minute] += 1
     ...         if minute < 180:
     ...             early +=1
-    ...     counter.append(early/len(test2))
-    >>> counter.sort()
-    >>> for c in counter: c <= 0.20      # doctest: +ELLIPSIS
+    ...     arrivals.append(early/len(test2))
+    ...     patrons_within_1_minute.append([v for v in count_minutes.values() if v > 1])
+    >>> arrivals.sort()     # Verify that 20% or fewer arrivals are before minute 240
+    >>> for c in arrivals: c <= 0.20      # doctest: +ELLIPSIS
     True
     ...
+    True
+    >>> minutes_w_multiple_patrons = 0   # Across 100 tests, how often do multiple patrons arrive within 1 minute?
+    >>> max_count_patrons = 0       # Across 100 tests, what's the max number of multiple patrons arriving?
+    >>> for test in patrons_within_1_minute:
+    ...     if len(test) > minutes_w_multiple_patrons:
+    ...         minutes_w_multiple_patrons = len(test)
+    ...     if max(test) > max_count_patrons:
+    ...         max_count_patrons = max(test)
+    >>> .23 < (minutes_w_multiple_patrons/600) < .28    # About 25% of minutes have multiple patrons arriving
+    True
+    >>> 8 <= max_count_patrons <= 11      # Max number of patrons arriving within 1 minute between 8-11
     True
     """
     minutes = np.arange(600)
@@ -246,6 +261,7 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                 waiting += patrons_this_minute
                 # Add wait time (how long you waited before getting a computer OR leaving, max wait time = length of time they are "willing" to wait))
             elif computers_in_use < computers_available:
+                # TODO: Handle when 2+ patrons arrive in same minute; currently it will update everyone with a computer, even if only 1 computer is available. Is this causing utilization over 100%?
                 # If computer available, add # patrons to computers in use
                 computers_in_use += patrons_this_minute
                 # Find and update ONLY df rows where "Arrival_minute" = minute

@@ -109,7 +109,7 @@ def set_total_patrons_count(samples: int = 1) -> int:
     # In fact, CPL data shows that usage decreased for the last 3 years, specifically by 13.5% from 2018 to 2019.
     low_service = (514 * .865)      # I've intentionally lowered the low end by 13.5%.
     # But it's also likely that due to the economic crisis, usage will go up (Source: Jaeger et al., 2011).
-    peak_service = random.triangular((622 * .865), (949 * .865), (622))     # Triangular distribution, giving more weight to probability of lower numbers; 949 was the peak in 2016.
+    peak_service = random.triangular((622 * .865), (949 * .865), 622)     # Triangular distribution, giving more weight to probability of lower numbers; 949 was the peak in 2016.
     # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_07/Probability_Distributions.ipynb & https://numpy.org/doc/stable/reference/random/generated/numpy.random.Generator.beta.html
     g = np.random.default_rng()
     patron_pct = np.random.Generator.beta(g, low_service, peak_service, samples)

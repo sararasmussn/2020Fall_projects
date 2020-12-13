@@ -129,23 +129,38 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
     :param total_patrons: Int yielded from set_total_patrons_count()
-    :param plot: Optional, prints 10 plots to review the distribution of patrons
+    :param plot: Optional, prints a histogram to review the distribution of patrons
     :return: Returns a list of all hours that patrons arrived
-    >>> test1 = patrons_per_minute(550, plot=True)  # X-axis = Minute arrived
+    >>> test1 = patrons_per_minute(450, plot=True)  # X-axis = Minute arrived
     >>> len(test1)      # Confirm total number of patrons that day
-    550
-    >>> counter = []
-    >>> for p in range(100):      # Verify that 20% or fewer arrivals are before minute 240
-    ...     test2 = patrons_per_minute(450)
+    450
+    >>> arrivals = []
+    >>> patrons_within_1_minute = []
+    >>> for p in range(100):
+    ...     test2 = patrons_per_minute(550)
+    ...     count_minutes = Counter()
     ...     early = 0
     ...     for minute in test2:
+    ...         count_minutes[minute] += 1
     ...         if minute < 180:
     ...             early +=1
-    ...     counter.append(early/len(test2))
-    >>> counter.sort()
-    >>> for c in counter: c <= 0.20      # doctest: +ELLIPSIS
+    ...     arrivals.append(early/len(test2))
+    ...     patrons_within_1_minute.append([v for v in count_minutes.values() if v > 1])
+    >>> arrivals.sort()     # Verify that 20% or fewer arrivals are before minute 240
+    >>> for c in arrivals: c <= 0.20      # doctest: +ELLIPSIS
     True
     ...
+    True
+    >>> minutes_w_multiple_patrons = 0   # Across 100 tests, how often do multiple patrons arrive within 1 minute?
+    >>> max_count_patrons = 0       # Across 100 tests, what's the max number of multiple patrons arriving?
+    >>> for test in patrons_within_1_minute:
+    ...     if len(test) > minutes_w_multiple_patrons:
+    ...         minutes_w_multiple_patrons = len(test)
+    ...     if max(test) > max_count_patrons:
+    ...         max_count_patrons = max(test)
+    >>> .23 < (minutes_w_multiple_patrons/600) < .28    # About 25% of minutes have multiple patrons arriving
+    True
+    >>> 8 <= max_count_patrons <= 11      # Max number of patrons arriving within 1 minute between 8-11
     True
     """
     minutes = np.arange(600)
@@ -241,18 +256,40 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
             patrons_this_minute = 0
         else:
             patrons_this_minute = counts[minute]
+            comps_free = computers_available - computers_in_use
             if computers_in_use == computers_available:
                 # If a computer is unavailable, people_waiting += # patrons
                 waiting += patrons_this_minute
                 # Add wait time (how long you waited before getting a computer OR leaving, max wait time = length of time they are "willing" to wait))
-            elif computers_in_use < computers_available:
-                # If computer available, add # patrons to computers in use
+            elif computers_in_use < computers_available and comps_free >= patrons_this_minute:
+                # If computers free >= patrons, add # patrons to computers in use
                 computers_in_use += patrons_this_minute
+                comps_free -= patrons_this_minute
                 # Find and update ONLY df rows where "Arrival_minute" = minute
                 # Source: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html
+                #  Maybe update the patron with the smallest index number?
                 patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
-                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they got a computer
+                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they plan to leave
                 patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patrons_df['Got_computer_minute'] - patrons_df['Arrival_minute'])
+            else:
+                # If more patrons arrive (within one minute) than computers available, what happens?
+                # In the real world, this might depend on whether they each made a reservation, or if not, who came first within the minute. If it was a group of kids arriving after school, they'd probably gather around and share the available computer.
+                # For this simulation, assign computer(s) to the patron(s) with the lower index value, one at a time. The other patron(s) joins wait queue.
+                change = 0
+                while comps_free > 0:
+                    comps_free -= 1
+                    computers_in_use += 1
+                    change += 1
+                    # Update got computer minute, leave minute, wait duration for 1 patron row in patron_df
+                    duplicate = patrons_df[patrons_df.duplicated(subset='Arrival_minute', keep=False)]
+                    duplicate = duplicate[duplicate['Got_computer_minute'].isnull() == True]
+                    small = duplicate['Arrival_minute'].nsmallest(n=1, keep='first').index
+                    patrons_df.at[small[0], 'Got_computer_minute'] = minute
+                    patrons_df.at[small[0], 'Leave_minute'] = minute + select_reservation_length()
+                    patrons_df.at[small[0], 'Wait_duration'] = minute - patrons_df.at[small[0], 'Arrival_minute']
+                # change = number of patrons this minute - number of computer assignments made, add patron remainder to waiting
+                waiting += (patrons_this_minute - change)
+
         # UPDATE QUEUE LEAVERS
         # Free up computer when patron reaches end of reservation length
         session_end = patrons_df[patrons_df['Leave_minute'] == minute]   # Return df where Leave_minute == now

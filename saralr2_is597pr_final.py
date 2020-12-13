@@ -301,8 +301,10 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
         patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Departed_queue']] = 1
         patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == minute - wait_length), ['Wait_duration']] = wait_length
         done_waiting = patrons_df['Arrival_minute'][(patrons_df['Got_computer_minute'].isnull() == True) & (patrons_df['Arrival_minute'] == minute - wait_length)].tolist()
-        if len(done_waiting) > 0:
+        if 0 < len(done_waiting) <= waiting:
             waiting -= len(done_waiting)
+        elif 0 < len(done_waiting) > waiting:
+            waiting = 0
         # COLLECT STATS @ END OF EACH HOUR
         if minute in range(59, (hours_open*60), 60):
             utilization = computers_in_use/computers_available

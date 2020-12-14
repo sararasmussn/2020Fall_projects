@@ -22,6 +22,7 @@ def calculate_pert(low, likely, high, weight=4) -> float:
     :param high: Highest number c in distribution
     :param weight: How many times more likely is the middle number?
     :return: Float pert value
+
     >>> calculate_pert(90, 500, 900, 4)
     498.3333333333333
     >>> calculate_pert(80, 400, 900, 4)
@@ -33,7 +34,8 @@ def calculate_pert(low, likely, high, weight=4) -> float:
 
 def determine_fleet_availability(total_inventory: int) -> int:
     """
-    RANDOMIZED VARIABLE: Given the number of computers in your fleet, calculate out-of-service count, return the number of computers in service today.
+    RANDOMIZED VARIABLE:
+    Given the number of computers in your fleet, calculate out-of-service count, return the number of computers in service today.
     Uses a PERT distribution.
     "Mean time between failures (MTBF) is the predicted elapsed time between inherent failures of a mechanical or electronic system, during normal system operation.
     MTBF can be calculated as the arithmetic mean (average) time between failures of a system." (Source: Wikipedia)
@@ -42,6 +44,7 @@ def determine_fleet_availability(total_inventory: int) -> int:
     :total_inventory: The number of computers in your inventory. Must be an int.
     :Weight: Default value is 4; the amount of likelihood that the middle point will be true.
     :return: The number (int) of computers available to be used today
+
     >>> determine_fleet_availability(153)
     145
     """
@@ -56,12 +59,13 @@ def determine_fleet_availability(total_inventory: int) -> int:
 
 def select_reservation_length() -> int:
     """
-    RANDOMIZED VARIABLE
+    RANDOMIZED VARIABLE:
     For one computer reservation, randomly select the reservation length:
     Options for length of use selected by the patrons: 15 or 1 hour.
-    Discrete distribution between two options. Not 50/50. Probably skewed more like 30/70. (Source: Personal experience)
+    Discrete distribution between two options. Not 50/50, probably skewed more like 30/70. (Source: Personal experience)
 
     :return: The length of time
+
     >>> results = Counter()
     >>> tests = 100000
     >>> for test in range(tests):
@@ -82,7 +86,8 @@ def select_reservation_length() -> int:
 
 def set_wait_length() -> int:
     """
-    RANDOMIZED VARIABLE (Uniform distribution) of how long patrons are willing to wait.
+    RANDOMIZED VARIABLE:
+    Uniform distribution of how long patrons are willing to wait.
 
     :return: Int between 15 and 90
     """
@@ -92,11 +97,12 @@ def set_wait_length() -> int:
 
 def set_total_patrons_count(samples: int = 1) -> int:
     """
-    Set the total number of patrons for 1 day.
-    RANDOMIZED VARIABLE, based on Chicago Public Library data. Uses a beta distribution.
+    RANDOMIZED VARIABLE:
+    Set the total number of patrons for 1 day, based on Chicago Public Library data. Uses a beta distribution.
 
     :samples: Number of times to run the simulation, used for testing the distribution.
     :return: An int between 444 and 821
+
     >>> results = []
     >>> for test in range(5):
     ...     results.append(set_total_patrons_count(samples=10000))  # Testing mode
@@ -124,13 +130,15 @@ def set_total_patrons_count(samples: int = 1) -> int:
 
 def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     """
+    RANDOMIZED VARIABLE:
     Draw one random # representing the minute arrived, for each person.
-    Discrete probability distribution of patrons showing up throughout the day, based on Seattle Public Library data.
+    Discrete probability distribution of patrons showing up throughout the day based on Seattle Public Library data.
     Note: Demand for computers != use of computers, but we only have data measuring use.
 
     :param total_patrons: Int yielded from set_total_patrons_count()
     :param plot: Optional, prints a histogram to review the distribution of patrons
     :return: Returns a list of all hours that patrons arrived
+
     >>> test1 = patrons_per_minute(450, plot=True)  # X-axis = Minute arrived
     >>> len(test1)      # Confirm total number of patrons that day
     450
@@ -195,7 +203,7 @@ def patrons_per_minute(total_patrons: int, plot: bool = False) -> list:
     return patron_dist
 
 
-def update_one_patron(df: pd.DataFrame, minute: int) -> pd.DataFrame:
+def update_one_patron(df: pd.DataFrame, subset: pd.DataFrame, minute: int) -> pd.DataFrame:
     """
     Handle where more patrons arrive (within one minute) than computers available. In the real world, this might depend on whether they each made a reservation, or if not, who came first within the minute. If it was a group of kids arriving after school, they'd probably gather around and share the available computer.
     Assign computer(s) to the patron(s) with the lower index value, one at a time.
@@ -203,19 +211,20 @@ def update_one_patron(df: pd.DataFrame, minute: int) -> pd.DataFrame:
     The other patron(s) joins wait queue.
 
     :param df: Patron dataframe
+    :param subset: Dataframe which is a subset of df, against which to compare
     :param minute: Current minute
     :return: Updated patron dataframe
+
     >>> dummy_df = pd.DataFrame({'Arrival_minute':[1,1,10],'Got_computer_minute':[np.nan,np.nan,np.nan],'Leave_minute':[np.nan,np.nan,np.nan],'Wait_duration':[np.nan,np.nan,np.nan]})
-    >>> minute = 1
-    >>> update_one_patron(dummy_df, minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    >>> test_subset = dummy_df[dummy_df.duplicated(subset='Arrival_minute', keep=False)]
+    >>> test_minute = 1
+    >>> update_one_patron(dummy_df, test_subset, test_minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
             Arrival_minute  Got_computer_minute  Leave_minute  Wait_duration
     0               1                  1.0          ...            0.0
     1               1                  NaN           NaN            NaN
     2              10                  NaN           NaN            NaN
     """
-    duplicate = df[df.duplicated(subset='Arrival_minute', keep=False)]
-    duplicates = duplicate[duplicate['Got_computer_minute'].isnull() == True]
-    small = duplicates['Arrival_minute'].nsmallest(n=1, keep='first').index
+    small = subset['Arrival_minute'].nsmallest(n=1, keep='first').index
     if len(small) >= 1:
         df.at[small[0], 'Got_computer_minute'] = minute
         df.at[small[0], 'Leave_minute'] = minute + select_reservation_length()
@@ -230,9 +239,10 @@ def update_one_or_more_patrons(df: pd.DataFrame, minute: int) -> pd.DataFrame:
     :param df: Patron dataframe
     :param minute: Current minute
     :return: Updated patron dataframe
+
     >>> dummy_df = pd.DataFrame({'Arrival_minute':[1,1,10],'Got_computer_minute':[np.nan,np.nan,np.nan],'Leave_minute':[np.nan,np.nan,np.nan],'Wait_duration':[np.nan,np.nan,np.nan]})
-    >>> minute = 1
-    >>> update_one_or_more_patrons(dummy_df, minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    >>> test_minute = 1
+    >>> update_one_or_more_patrons(dummy_df, test_minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
             Arrival_minute  Got_computer_minute  Leave_minute  Wait_duration
     0               1                  1.0          ...            0.0
     1               1                  1.0          ...            0.0
@@ -258,6 +268,7 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
     - How many patrons waited to use a computer, per hour?                  (n columns with dtype int)
     - How many patrons left the queue because the wait was longer than wait_length()?     (n columns with dtype int)
     - What was the repair cost for the day?                                 (dtype int)
+
     >>> run_one_day(150)     # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
     Computers available...min wait duration
     ...
@@ -301,11 +312,7 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                 if oldest_arrive_min <= minute:
                     # Update 1 patron at a time
                     nulls = patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min)]
-                    small = nulls['Arrival_minute'].nsmallest(n=1, keep='first').index
-                    if len(small) >= 1:
-                        patrons_df.at[small[0], 'Got_computer_minute'] = minute
-                        patrons_df.at[small[0], 'Leave_minute'] = minute + select_reservation_length()
-                        patrons_df.at[small[0], 'Wait_duration'] = minute - patrons_df.at[small[0], 'Arrival_minute']
+                    update_one_patron(patrons_df, nulls, minute)
                     comps_free -= 1
                     computers_in_use += 1
                     waiting -= 1
@@ -325,7 +332,9 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                 change = 0
                 while comps_free > 0:
                     # Update got computer minute, leave minute, wait duration for 1 patron row in patron_df
-                    patrons_df = update_one_patron(patrons_df, minute)
+                    duplicate = patrons_df[patrons_df.duplicated(subset='Arrival_minute', keep=False)]
+                    duplicates = duplicate[duplicate['Got_computer_minute'].isnull() == True]
+                    patrons_df = update_one_patron(patrons_df, duplicates, minute)
                     comps_free -= 1
                     computers_in_use += 1
                     change += 1

@@ -216,8 +216,9 @@ def update_one_patron(df: pd.DataFrame, subset: pd.DataFrame, minute: int) -> pd
     :return: Updated patron dataframe
 
     >>> dummy_df = pd.DataFrame({'Arrival_minute':[1,1,10],'Got_computer_minute':[np.nan,np.nan,np.nan],'Leave_minute':[np.nan,np.nan,np.nan],'Wait_duration':[np.nan,np.nan,np.nan]})
+    >>> test_subset = dummy_df[dummy_df.duplicated(subset='Arrival_minute', keep=False)]
     >>> test_minute = 1
-    >>> update_one_patron(dummy_df, test_minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
+    >>> update_one_patron(dummy_df, test_subset, test_minute)        # doctest: +ELLIPSIS +NORMALIZE_WHITESPACE
             Arrival_minute  Got_computer_minute  Leave_minute  Wait_duration
     0               1                  1.0          ...            0.0
     1               1                  NaN           NaN            NaN

@@ -433,7 +433,7 @@ def main():
     """
     try:
         days = int(input("How many days should the simulation run? "))      # 1 year=365; 4 years=1,460
-        results = run_simulation([75, 150, 225, 300, 375], number_of_days=days)            # [75, 150, 225, 300, 375]
+        results = run_simulation([75, 95, 115, 135, 155], number_of_days=days)            # [75, 150, 225, 300, 375]
         folder = 'sample_output/'
         filenames = ['detailed_output.csv', 'financial_overview.csv', 'wait_durations_in_minutes.csv',
                      'patron_departures.csv', 'max_patrons_waiting_by_hour.csv', 'utilization_by_hour.csv']

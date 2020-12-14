@@ -239,30 +239,33 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
     counts = patrons_df['Arrival_minute'].value_counts()
     computers_in_use = 0
     for minute in range(hours_open * 60):
-        # UPDATE COMPUTER USAGE
-        # Before assigning new patrons to a computer, assign patrons who are waiting
-        while waiting > 0 and (computers_in_use < computers_available):
-            comps_free = computers_available - computers_in_use
-            # Return a series or int w/ min(arrival minute) where got_computer_minute is null
-            oldest_arrive_min = patrons_df['Arrival_minute'][(patrons_df['Got_computer_minute'].isnull() == True) & (patrons_df['Departed_queue'].isnull() == True)].min()
-            # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
-            patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
-            patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
-            patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patrons_df['Arrival_minute']
-            waiting -= comps_free
-            computers_in_use += comps_free
         # If 0 patrons arrived at this minute, skip ahead. Otherwise... count how many patrons arrived.
         if minute not in counts.index.values:
             patrons_this_minute = 0
         else:
             patrons_this_minute = counts[minute]
+        # UPDATE COMPUTER USAGE
+        # Before assigning new patrons to a computer, assign patrons who are waiting
+        while waiting > 0 and (computers_in_use < computers_available):
+            # Return a series or int w/ min(arrival minute) where got_computer_minute is null
+            oldest_arrive_min = patrons_df['Arrival_minute'][(patrons_df['Got_computer_minute'].isnull() == True) & (patrons_df['Departed_queue'].isnull() == True)].min()
+            if oldest_arrive_min <= minute:
+                comps_free = computers_available - computers_in_use
+                # Source: https://github.com/iSchool-597PR/Examples_Fa20/blob/master/week_09/pandas_pt2.ipynb
+                patrons_df.loc[lambda x: (x['Got_computer_minute'].isnull() == True) & (x['Arrival_minute'] == oldest_arrive_min), ['Got_computer_minute']] = minute
+                patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Leave_minute']] = minute + select_reservation_length()
+                patrons_df.loc[lambda x: x['Arrival_minute'] == oldest_arrive_min, ['Wait_duration']] = minute - patrons_df['Arrival_minute']
+                waiting -= comps_free
+                computers_in_use += comps_free
+            else:
+                break
+        if patrons_this_minute > 0:
             comps_free = computers_available - computers_in_use
+            # If a computer is unavailable...
             if computers_in_use == computers_available:
-                # If a computer is unavailable, people_waiting += # patrons
                 waiting += patrons_this_minute
-                # Add wait time (how long you waited before getting a computer OR leaving, max wait time = length of time they are "willing" to wait))
+            # If computers free >= patrons, add # patrons to computers in use
             elif computers_in_use < computers_available and comps_free >= patrons_this_minute:
-                # If computers free >= patrons, add # patrons to computers in use
                 computers_in_use += patrons_this_minute
                 comps_free -= patrons_this_minute
                 # Find and update ONLY df rows where "Arrival_minute" = minute
@@ -270,9 +273,9 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                 #  Maybe update the patron with the smallest index number?
                 patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Got_computer_minute']] = minute                # Add when they got a computer
                 patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Leave_minute']] = minute + select_reservation_length()  # Add when they plan to leave
-                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = (patrons_df['Got_computer_minute'] - patrons_df['Arrival_minute'])
+                patrons_df.loc[lambda x: x['Arrival_minute'] == minute, ['Wait_duration']] = minute - patrons_df['Arrival_minute']
             else:
-                # If more patrons arrive (within one minute) than computers available, what happens?
+                # Else, If more patrons arrive (within one minute) than computers available, what happens?
                 # In the real world, this might depend on whether they each made a reservation, or if not, who came first within the minute. If it was a group of kids arriving after school, they'd probably gather around and share the available computer.
                 # For this simulation, assign computer(s) to the patron(s) with the lower index value, one at a time. The other patron(s) joins wait queue.
                 change = 0
@@ -284,9 +287,12 @@ def run_one_day(fleet: int, hours_open: int = 10) -> pd.DataFrame:
                     duplicate = patrons_df[patrons_df.duplicated(subset='Arrival_minute', keep=False)]
                     duplicate = duplicate[duplicate['Got_computer_minute'].isnull() == True]
                     small = duplicate['Arrival_minute'].nsmallest(n=1, keep='first').index
-                    patrons_df.at[small[0], 'Got_computer_minute'] = minute
-                    patrons_df.at[small[0], 'Leave_minute'] = minute + select_reservation_length()
-                    patrons_df.at[small[0], 'Wait_duration'] = minute - patrons_df.at[small[0], 'Arrival_minute']
+                    if len(small) < 1:
+                        break
+                    else:
+                        patrons_df.at[small[0], 'Got_computer_minute'] = minute
+                        patrons_df.at[small[0], 'Leave_minute'] = minute + select_reservation_length()
+                        patrons_df.at[small[0], 'Wait_duration'] = minute - patrons_df.at[small[0], 'Arrival_minute']
                 # change = number of patrons this minute - number of computer assignments made, add patron remainder to waiting
                 waiting += (patrons_this_minute - change)
 

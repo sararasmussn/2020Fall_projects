@@ -66,16 +66,8 @@ def select_reservation_length() -> int:
 
     :return: The length of time
 
-    >>> results = Counter()
-    >>> tests = 100000
-    >>> for test in range(tests):
-    ...     if select_reservation_length() == 15:
-    ...         results[15] += 1
-    ...     else:
-    ...         results[60] += 1
-    >>> .72 <= (results[60] / tests) <= .78
-    True
-    >>> .22 <= (results[15] / tests) <= .28
+    >>> reservation = select_reservation_length()
+    >>> reservation in [15, 60]
     True
     """
     choices = [15, 60]

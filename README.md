@@ -39,8 +39,18 @@ Service quality measures:
 - Number of patrons who departed because the wait was too long
 
 ## Findings
-Please see sample_output/ for examples of the program's output. 
+The program generates a folder of the following CSV files summarizing the results: 
+- Detailed
+- Financials
+- Wait durations
+- Departures
+- Patrons waiting
+- Utilization  
 
+These CSVs can be imported into your favorite tool for quick visualization and further analysis (e.g. Tableau, Excel, Power BI; the visualizations in the "initial results" section of the presentation were created with Google Sheets). 
+
+Please see sample_output/ for examples of the program's output. 
+ 
 [Download presentation deck](https://github.com/sararasmussn/saralr2_2020Fall_project/blob/main/saralr2_IS597PR_presentation.pdf)
 
 ## Bibliography

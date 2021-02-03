@@ -40,12 +40,12 @@ Service quality measures:
 
 ## Findings
 The program generates a folder of the following CSV files summarizing the results: 
-- Detailed
-- Financials
-- Wait durations
-- Departures
-- Patrons waiting
-- Utilization  
+- Detailed: Full program output 
+- Financial overview: Upfront cost of devices and median cost of repairs, grouped by inventory quantity
+- Max patrons waiting: Maximum count of patrons waiting per hour, grouped by inventory quantity
+- Patron departures: Min, median, and max count of patrons and those who left because they no longer "wanted" to wait, grouped by inventory quantity
+- Utilization: Min, median, and max utilization rate per hour, grouped by inventory quantity  
+- Wait durations: Minimum, median, and maximum wait time (in minutes) for patrons to get a computer, grouped by inventory quantity
 
 These CSVs can be imported into your favorite tool for quick visualization and further analysis (e.g. Tableau, Excel, Power BI; the visualizations in the "initial results" section of the presentation were created with Google Sheets). 
 
